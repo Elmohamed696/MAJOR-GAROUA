@@ -1,0 +1,2847 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>MAJOR - Système de Gestion de Factures</title>
+	<!-- Tailwind CSS -->
+	<script src="https://cdn.tailwindcss.com"></script>
+	<!-- Font Awesome -->
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+	<!-- jsPDF pour export PDF -->
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+	<script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+	<!-- Vue.js pour réactivité -->
+	<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+	<style>
+		/* Variables CSS */
+		:root {
+			--primary: #4361ee;
+			--primary-dark: #3a0ca3;
+			--secondary: #f72585;
+			--success: #4cc9f0;
+			--warning: #f8961e;
+			--danger: #f94144;
+		}
+		
+		.btn-primary {
+			background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+			color: white;
+			transition: all 0.3s ease;
+		}
+		
+		.btn-primary:hover {
+			transform: translateY(-2px);
+			box-shadow: 0 6px 20px rgba(67, 97, 238, 0.4);
+		}
+		
+		.modal {
+			display: none;
+			position: fixed;
+			z-index: 1000;
+			left: 0;
+			top: 0;
+			width: 100%;
+			height: 100%;
+			background-color: rgba(0,0,0,0.5);
+			backdrop-filter: blur(5px);
+		}
+		
+		.modal-content {
+			background-color: white;
+			margin: 5% auto;
+			padding: 30px;
+			border-radius: 15px;
+			width: 90%;
+			max-width: 800px;
+			max-height: 85vh;
+			overflow-y: auto;
+			box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+			animation: modalSlideIn 0.3s ease-out;
+		}
+		
+		@keyframes modalSlideIn {
+			from { opacity: 0; transform: translateY(-50px); }
+			to { opacity: 1; transform: translateY(0); }
+		}
+		
+		.login-screen {
+			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+			min-height: 100vh;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		}
+		
+		.login-card {
+			background: white;
+			border-radius: 20px;
+			padding: 40px;
+			width: 100%;
+			max-width: 400px;
+			box-shadow: 0 25px 50px rgba(0, 0, 0, 0.2);
+		}
+		
+		.invoice-template {
+			font-family: 'Arial', sans-serif;
+			border: 2px solid #333;
+			padding: 25px;
+			background: white;
+			max-width: 800px;
+			margin: 0 auto;
+		}
+		
+		.draggable-item {
+			cursor: move;
+			transition: all 0.3s;
+		}
+		
+		.draggable-item:hover {
+			transform: translateY(-2px);
+			box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+		}
+		
+		.drop-zone {
+			min-height: 100px;
+			border: 2px dashed var(--primary);
+			border-radius: 8px;
+			padding: 20px;
+			transition: all 0.3s;
+		}
+		
+		.drop-zone.active {
+			border-color: var(--success);
+			background-color: rgba(76, 201, 240, 0.05);
+		}
+		
+		.sidebar-active {
+			background: linear-gradient(90deg, var(--primary) 0%, var(--primary-dark) 100%);
+			color: white;
+			box-shadow: 0 4px 12px rgba(67, 97, 238, 0.3);
+		}
+		
+		.floating-btn {
+			position: fixed;
+			bottom: 30px;
+			right: 30px;
+			width: 60px;
+			height: 60px;
+			border-radius: 50%;
+			background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+			color: white;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			font-size: 1.5rem;
+			box-shadow: 0 10px 25px rgba(67, 97, 238, 0.4);
+			z-index: 100;
+			cursor: pointer;
+			transition: all 0.3s ease;
+		}
+		
+		.floating-btn:hover {
+			transform: scale(1.1) rotate(90deg);
+			box-shadow: 0 15px 35px rgba(67, 97, 238, 0.5);
+		}
+
+		/* Responsive tweaks */
+		.logo-img {
+			width: 12rem; /* 192px */
+			height: 12rem;
+			object-fit: cover;
+		}
+		.logo-img-small {
+			width: 5rem; /* 80px */
+			height: 5rem;
+			object-fit: cover;
+		}
+
+		.modal-content {
+			width: calc(100% - 40px);
+			max-width: 820px;
+		}
+
+		.floating-btn {
+			/* existing styles... */
+		}
+
+		/* make floating button slightly smaller on small screens */
+		@media (max-width: 640px) {
+			.logo-img { width: 10rem; height: 10rem; }
+			.logo-img-small { width: 4rem; height: 4rem; }
+			.floating-btn { width: 52px; height: 52px; bottom: 18px; right: 18px; }
+			.modal-content { margin: 10% 10px; padding: 20px; max-height: 90vh; }
+		}
+
+		/* Sidebar mobile handling */
+		#mainSidebar { /* hidden on small by default via classes in markup */ }
+		#mainSidebar.mobile-open {
+			display: block !important;
+			position: fixed;
+			left: 0;
+			top: 0;
+			height: 100%;
+			width: 18rem; /* 288px */
+			z-index: 60;
+			overflow-y: auto;
+			box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+			background: white;
+		}
+		#mobileSidebarOverlay {
+			position: fixed;
+			inset: 0;
+			background: rgba(0,0,0,0.5);
+			z-index: 50;
+			display: none;
+		}
+		#mobileSidebarOverlay.show { display: block; }
+	</style>
+</head>
+<body>
+	<!-- =========================================== -->
+	<!-- SECTION 1: ÉCRAN DE CONNEXION -->
+	<!-- =========================================== -->
+	<div id="loginSection" class="login-screen">
+		<div class="login-card">
+			<div class="text-center mb-8">
+				<div class="flex justify-center mb-6">
+					<img src="cabrel.png" alt="MAJOR" class="w-48 h-48 object-cover rounded-full mx-auto" />
+				</div>
+				<h1 class="text-3xl font-bold text-gray-800 mb-2">MAJOR</h1>
+				<p class="text-gray-600">Système de gestion des factures dynamiques</p>
+			</div>
+			
+			<form id="loginForm" class="space-y-6">
+				<div>
+					<label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+					<div class="relative">
+						<i class="fas fa-envelope absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+						<input type="email" id="loginEmail" required 
+							   class="w-full border-2 border-gray-300 rounded-lg px-4 py-3 pl-10 focus:border-blue-500 focus:outline-none" 
+							   placeholder="admin@facturation.com">
+					</div>
+				</div>
+				
+				<div>
+					<label class="block text-sm font-medium text-gray-700 mb-2">Mot de passe</label>
+					<div class="relative">
+						<i class="fas fa-lock absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+						<input type="password" id="loginPassword" required 
+							   class="w-full border-2 border-gray-300 rounded-lg px-4 py-3 pl-10 focus:border-blue-500 focus:outline-none" 
+							   placeholder="Votre mot de passe">
+						<button type="button" onclick="togglePassword()" 
+								class="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400">
+							<i class="fas fa-eye"></i>
+						</button>
+					</div>
+				</div>
+				
+				<div class="flex items-center justify-between">
+					<label class="flex items-center">
+						<input type="checkbox" class="rounded border-gray-300 text-blue-600">
+						<span class="ml-2 text-sm text-gray-600">Se souvenir de moi</span>
+					</label>
+					<a href="#" onclick="showForgotPassword()" class="text-sm text-blue-600 hover:underline">Mot de passe oublié ?</a>
+				</div>
+				
+				<button type="submit" class="btn-primary w-full py-3 rounded-lg font-semibold text-lg">
+					<i class="fas fa-sign-in-alt mr-2"></i>Se connecter
+				</button>
+				
+				<div class="text-center mt-6">
+                    <p class="text-sm text-gray-600">Comptes de démonstration</p>
+                    <div class="mt-2 space-y-1">
+                        <p class="text-xs text-gray-500"><strong>Admin:</strong> admin@facturation.com / admin123</p>
+                        <p class="text-xs text-gray-500"><strong>Comptable:</strong> comptable@facturation.com / comptable123</p>
+                    </div>
+                </div>
+			</form>
+		</div>
+	</div>
+
+	<!-- =========================================== -->
+	<!-- SECTION 2: GESTION DES COMPTES (Admin only) -->
+	<!-- =========================================== -->
+	<div id="userManagementSection" class="min-h-screen bg-gray-50 hidden">
+		<!-- Navigation -->
+		<nav class="bg-white shadow-lg border-b border-gray-200">
+			<div class="container mx-auto px-4">
+				<div class="flex justify-between items-center h-16">
+					<div class="flex items-center space-x-3">
+						<i class="fas fa-users-cog text-2xl text-blue-600"></i>
+						<h1 class="text-xl font-bold text-gray-800">Gestion des <span class="text-blue-600">Comptes</span></h1>
+					</div>
+					
+					<div class="flex items-center space-x-4">
+						<span class="text-sm text-gray-600" id="managementDateTime"></span>
+						<button onclick="logout()" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700">
+							<i class="fas fa-sign-out-alt mr-2"></i>Quitter
+						</button>
+					</div>
+				</div>
+			</div>
+		</nav>
+
+		<!-- Main Content -->
+		<div class="container mx-auto px-4 py-8">
+			<div class="bg-white rounded-xl shadow-lg p-6">
+				<!-- Header -->
+				<div class="flex flex-col lg:flex-row lg:items-center justify-between mb-8">
+					<div>
+						<h2 class="text-3xl font-bold text-gray-800 mb-2">Gestion des Comptes Utilisateurs</h2>
+						<p class="text-gray-600">Créez et gérez les comptes d'accès au système</p>
+					</div>
+					<div class="flex space-x-3 mt-4 lg:mt-0">
+						<button onclick="showAddUserModal()" class="btn-primary px-6 py-3 rounded-xl font-semibold flex items-center space-x-2">
+							<i class="fas fa-user-plus"></i>
+							<span>Nouvel utilisateur</span>
+						</button>
+						<button onclick="switchToApp()" class="bg-green-600 text-white px-6 py-3 rounded-xl font-semibold hover:bg-green-700 flex items-center space-x-2">
+							<i class="fas fa-arrow-right"></i>
+							<span>Aller à l'application</span>
+						</button>
+					</div>
+				</div>
+
+				<!-- Liste des utilisateurs -->
+				<div class="overflow-x-auto">
+					<table class="min-w-full divide-y divide-gray-200">
+						<thead class="bg-gray-50">
+							<tr>
+								<th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Utilisateur</th>
+								<th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Email</th>
+								<th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Rôle</th>
+								<th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Date création</th>
+								<th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Statut</th>
+								<th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Actions</th>
+							</tr>
+						</thead>
+						<tbody id="usersTable" class="bg-white divide-y divide-gray-200">
+							<!-- Les utilisateurs seront insérés ici -->
+						</tbody>
+					</table>
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<!-- =========================================== -->
+	<!-- SECTION 3: APPLICATION DE FACTURATION -->
+	<!-- =========================================== -->
+	<div id="appSection" class="min-h-screen bg-gray-50 hidden">
+		<!-- mobile sidebar overlay -->
+		<div id="mobileSidebarOverlay" onclick="toggleSidebar()"></div>
+
+		<!-- Navigation -->
+		<nav class="bg-white shadow-lg border-b border-gray-200">
+			<div class="container mx-auto px-4">
+				<div class="flex justify-between items-center h-16">
+					<div class="flex items-center space-x-4">
+						<!-- Petit bouton Retour (affiché si historique non vide) -->
+						<button id="backButton" onclick="goBack()" class="hidden p-2 mr-2 text-gray-700" aria-label="Retour">
+							<i class="fas fa-arrow-left text-xl"></i>
+						</button>
+						<!-- mobile sidebar toggle -->
+						<button class="lg:hidden p-2 mr-2" onclick="toggleSidebar()" aria-label="Ouvrir le menu">
+							<i class="fas fa-bars text-xl text-gray-700"></i>
+						</button>
+						<div class="flex items-center space-x-3">
+							<img src="cabrel.png" alt="MAJOR" class="logo-img-small rounded-full" />
+							<h1 class="text-xl font-bold text-gray-800">MAJOR</h1>
+						</div>
+						<div class="hidden md:flex items-center space-x-1 bg-gray-100 rounded-lg px-2 py-1">
+							<span class="text-xs text-gray-500">Connecté en tant que:</span>
+							<span class="text-sm font-medium text-blue-600" id="currentUserRole">Administrateur</span>
+						</div>
+					</div>
+					
+					<div class="flex items-center space-x-4">
+						<div class="relative group">
+							<button class="p-2 text-gray-600 hover:text-blue-600 relative">
+								<i class="fas fa-bell text-xl"></i>
+								<span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">3</span>
+							</button>
+						</div>
+						
+						<div class="hidden md:block">
+							<span class="text-sm text-gray-600" id="appDateTime"></span>
+						</div>
+						
+						<div class="relative group">
+							<button onclick="toggleUserMenu()" class="flex items-center space-x-3 px-3 py-2 rounded-lg hover:bg-gray-100">
+								<div class="w-8 h-8 bg-gradient-to-r from-blue-600 to-blue-800 rounded-full flex items-center justify-center text-white">
+									<i class="fas fa-user"></i>
+								</div>
+								<div class="text-left">
+									<div class="font-medium" id="currentUserName">Chargement...</div>
+									<div class="text-xs text-gray-500" id="currentUserEmail">Connecté</div>
+								</div>
+								<i class="fas fa-chevron-down text-gray-400"></i>
+							</button>
+							
+							<div id="userMenu" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+								<div class="py-2">
+									<a href="#" onclick="showUserProfile()" class="block px-4 py-2 text-gray-700 hover:bg-gray-100">
+										<i class="fas fa-user mr-2"></i>Mon profil
+									</a>
+									<a href="#" onclick="switchToUserManagement()" class="block px-4 py-2 text-blue-600 hover:bg-blue-50">
+										<i class="fas fa-users-cog mr-2"></i>Gestion des comptes
+									</a>
+									<div class="border-t my-2"></div>
+									<a href="#" onclick="logout()" class="block px-4 py-2 text-red-600 hover:bg-red-50">
+										<i class="fas fa-sign-out-alt mr-2"></i>Déconnexion
+									</a>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</nav>
+
+		<!-- Main Layout -->
+		<div class="container mx-auto px-4 py-6">
+			<div class="flex flex-col lg:flex-row">
+				<!-- Sidebar -->
+				<div id="mainSidebar" class="w-full lg:w-64 mb-6 lg:mb-0 lg:mr-6">
+					<div class="bg-white rounded-xl shadow-lg p-4 sticky top-6">
+						<div class="mb-6">
+							<h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">MENU PRINCIPAL</h3>
+							<ul class="space-y-2">
+								<li>
+									<button onclick="navigate('dashboard')" class="w-full text-left px-4 py-3 rounded-xl hover:bg-blue-50 flex items-center space-x-3 transition-all duration-300 dashboard-btn">
+										<i class="fas fa-tachometer-alt text-lg"></i>
+										<span class="font-medium">Tableau de bord</span>
+									</button>
+								</li>
+								<li>
+									<button onclick="navigate('factures')" class="w-full text-left px-4 py-3 rounded-xl hover:bg-blue-50 flex items-center space-x-3 transition-all duration-300 factures-btn">
+										<i class="fas fa-file-invoice text-lg"></i>
+										<span class="font-medium">Factures</span>
+										<span class="ml-auto bg-blue-100 text-blue-600 text-xs font-bold px-2 py-1 rounded-full" id="factureCount">0</span>
+									</button>
+								</li>
+								<li>
+									<button onclick="navigate('clients')" class="w-full text-left px-4 py-3 rounded-xl hover:bg-blue-50 flex items-center space-x-3 transition-all duration-300 clients-btn">
+										<i class="fas fa-users text-lg"></i>
+										<span class="font-medium">Clients</span>
+										<span class="ml-auto bg-green-100 text-green-600 text-xs font-bold px-2 py-1 rounded-full" id="clientCount">0</span>
+									</button>
+								</li>
+								<li>
+									<button onclick="navigate('produits')" class="w-full text-left px-4 py-3 rounded-xl hover:bg-blue-50 flex items-center space-x-3 transition-all duration-300 produits-btn">
+										<i class="fas fa-boxes text-lg"></i>
+										<span class="font-medium">Produits</span>
+										<span class="ml-auto bg-purple-100 text-purple-600 text-xs font-bold px-2 py-1 rounded-full" id="produitCount">0</span>
+									</button>
+								</li>
+								<li>
+									<button onclick="navigate('entreprises')" class="w-full text-left px-4 py-3 rounded-xl hover:bg-blue-50 flex items-center space-x-3 transition-all duration-300 entreprises-btn">
+										<i class="fas fa-building text-lg"></i>
+										<span class="font-medium">Entreprises</span>
+									</button>
+								</li>
+							</ul>
+						</div>
+						
+						<div class="mb-6">
+							<h3 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">RAPPORTS</h3>
+							<ul class="space-y-2">
+								<li>
+									<button onclick="generateReport('mensuel')" class="w-full text-left px-4 py-3 rounded-xl hover:bg-green-50 flex items-center space-x-3">
+										<i class="fas fa-chart-line text-green-600"></i>
+										<span>Rapport mensuel</span>
+									</button>
+								</li>
+								<li>
+									<button onclick="generateReport('annuel')" class="w-full text-left px-4 py-3 rounded-xl hover:bg-purple-50 flex items-center space-x-3">
+										<i class="fas fa-chart-pie text-purple-600"></i>
+										<span>Statistiques</span>
+									</button>
+								</li>
+							</ul>
+						</div>
+						
+						<!-- Statistiques rapides -->
+						<div class="p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-100">
+							<h3 class="text-sm font-semibold text-blue-800 mb-3">📊 STATISTIQUES</h3>
+							<div class="space-y-3">
+								<div class="flex items-center justify-between">
+									<div class="flex items-center">
+										<div class="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
+											<i class="fas fa-file-invoice text-blue-600"></i>
+										</div>
+										<div>
+											<p class="text-xs text-blue-700">Factures ce mois</p>
+											<p class="font-bold text-blue-900" id="statsMonth">0</p>
+										</div>
+									</div>
+								</div>
+								
+								<div class="flex items-center justify-between">
+									<div class="flex items-center">
+										<div class="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center mr-3">
+											<i class="fas fa-money-bill-wave text-green-600"></i>
+										</div>
+										<div>
+											<p class="text-xs text-green-700">Chiffre d'affaires</p>
+											<p class="font-bold text-green-900" id="statsAmount">0 FCFA</p>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- Main Content -->
+				<div class="flex-1">
+					<!-- Dashboard Content -->
+					<div id="dashboardContent" class="content-section">
+						<!-- Header -->
+						<div class="flex flex-col lg:flex-row lg:items-center justify-between mb-8">
+							<div>
+								<h2 class="text-3xl font-bold text-gray-800 mb-2">Tableau de bord</h2>
+								<p class="text-gray-600">Bienvenue, <span id="welcomeUser" class="font-semibold text-blue-600">Administrateur</span></p>
+							</div>
+							<div class="flex flex-wrap gap-3 mt-4 lg:mt-0">
+								<button onclick="showCreateInvoiceModal()" class="btn-primary px-6 py-3 rounded-xl font-semibold flex items-center space-x-2">
+									<i class="fas fa-plus-circle"></i>
+									<span>Nouvelle facture</span>
+								</button>
+								<button onclick="generateSampleData()" class="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl font-semibold hover:shadow-lg transition-all flex items-center space-x-2">
+									<i class="fas fa-database"></i>
+									<span>Données de démo</span>
+								</button>
+							</div>
+						</div>
+
+						<!-- Stats Cards -->
+						<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+							<div class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow">
+								<div class="flex items-center justify-between">
+									<div>
+										<p class="text-gray-500 text-sm">Total factures</p>
+										<p class="text-3xl font-bold mt-2 text-gray-800" id="totalInvoices">0</p>
+									</div>
+									<div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center">
+										<i class="fas fa-file-invoice text-2xl text-blue-600"></i>
+									</div>
+								</div>
+							</div>
+
+							<div class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow">
+								<div class="flex items-center justify-between">
+									<div>
+										<p class="text-gray-500 text-sm">Chiffre d'affaires</p>
+										<p class="text-3xl font-bold mt-2 text-gray-800" id="totalRevenue">0 FCFA</p>
+									</div>
+									<div class="w-12 h-12 bg-green-100 rounded-xl flex items-center justify-center">
+										<i class="fas fa-money-bill-wave text-2xl text-green-600"></i>
+									</div>
+								</div>
+							</div>
+
+							<div class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow">
+								<div class="flex items-center justify-between">
+									<div>
+										<p class="text-gray-500 text-sm">Clients actifs</p>
+										<p class="text-3xl font-bold mt-2 text-gray-800" id="activeClients">0</p>
+									</div>
+									<div class="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center">
+										<i class="fas fa-users text-2xl text-purple-600"></i>
+									</div>
+								</div>
+							</div>
+
+							<div class="bg-white rounded-xl shadow-lg p-6 hover:shadow-xl transition-shadow">
+								<div class="flex items-center justify-between">
+									<div>
+										<p class="text-gray-500 text-sm">Produits/Services</p>
+										<p class="text-3xl font-bold mt-2 text-gray-800" id="totalProducts">0</p>
+									</div>
+									<div class="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
+										<i class="fas fa-boxes text-2xl text-yellow-600"></i>
+									</div>
+								</div>
+							</div>
+						</div>
+
+						<!-- Section principale -->
+						<div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+							<!-- Factures récentes -->
+							<div class="lg:col-span-2">
+								<div class="bg-white rounded-xl shadow-lg p-6">
+									<div class="flex justify-between items-center mb-6">
+										<h3 class="text-xl font-bold text-gray-800">Factures récentes</h3>
+										<button onclick="navigate('factures')" class="text-blue-600 hover:underline font-medium">
+											Voir tout →
+										</button>
+									</div>
+									<div class="overflow-x-auto">
+										<table class="min-w-full">
+											<thead>
+												<tr class="border-b border-gray-200">
+													<th class="pb-3 text-left text-sm font-semibold text-gray-600">N° Facture</th>
+													<th class="pb-3 text-left text-sm font-semibold text-gray-600">Client</th>
+													<th class="pb-3 text-left text-sm font-semibold text-gray-600">Montant</th>
+													<th class="pb-3 text-left text-sm font-semibold text-gray-600">Statut</th>
+													<th class="pb-3 text-left text-sm font-semibold text-gray-600"></th>
+												</tr>
+											</thead>
+											<tbody id="recentInvoices" class="divide-y divide-gray-100">
+												<!-- Les factures récentes seront insérées ici -->
+											</tbody>
+										</table>
+									</div>
+								</div>
+							</div>
+
+							<!-- Actions rapides -->
+							<div class="space-y-8">
+								<!-- Actions rapides -->
+								<div class="bg-white rounded-xl shadow-lg p-6">
+									<h3 class="text-xl font-bold text-gray-800 mb-6">Actions rapides</h3>
+									<div class="space-y-4">
+										<button onclick="navigate('clients')" class="w-full text-left p-4 bg-blue-50 hover:bg-blue-100 rounded-xl flex items-center space-x-4 transition-all duration-300">
+											<div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+												<i class="fas fa-user-plus text-blue-600"></i>
+											</div>
+											<div>
+												<h4 class="font-semibold text-gray-800">Ajouter un client</h4>
+												<p class="text-sm text-gray-600">Nouveau client</p>
+											</div>
+										</button>
+										
+										<button onclick="navigate('produits')" class="w-full text-left p-4 bg-green-50 hover:bg-green-100 rounded-xl flex items-center space-x-4 transition-all duration-300">
+											<div class="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
+												<i class="fas fa-box text-green-600"></i>
+											</div>
+											<div>
+												<h4 class="font-semibold text-gray-800">Ajouter un produit</h4>
+												<p class="text-sm text-gray-600">Nouveau produit/service</p>
+											</div>
+										</button>
+										
+										<button onclick="generatePDF()" class="w-full text-left p-4 bg-purple-50 hover:bg-purple-100 rounded-xl flex items-center space-x-4 transition-all duration-300">
+											<div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+												<i class="fas fa-file-pdf text-purple-600"></i>
+											</div>
+											<div>
+												<h4 class="font-semibold text-gray-800">Exporter rapport</h4>
+												<p class="text-sm text-gray-600">PDF / Excel</p>
+											</div>
+										</button>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<!-- Factures Content -->
+					<div id="facturesContent" class="content-section hidden">
+						<div class="bg-white rounded-xl shadow-lg p-6">
+							<!-- Header -->
+							<div class="flex flex-col lg:flex-row lg:items-center justify-between mb-8">
+								<div>
+									<h2 class="text-3xl font-bold text-gray-800 mb-2">Gestion des Factures</h2>
+									<p class="text-gray-600">Créez, gérez et suivez vos factures</p>
+								</div>
+								<div class="flex space-x-3 mt-4 lg:mt-0">
+									<button onclick="showCreateInvoiceModal()" class="btn-primary px-6 py-3 rounded-xl font-semibold flex items-center space-x-2">
+										<i class="fas fa-plus"></i>
+										<span>Nouvelle facture</span>
+									</button>
+								</div>
+							</div>
+
+							<!-- Filtres -->
+							<div class="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl mb-8">
+								<h3 class="text-lg font-semibold text-gray-800 mb-4">Filtres et recherche</h3>
+								<div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+								<div>
+									<label class="block text-sm font-medium text-gray-700 mb-2">Recherche</label>
+									<input id="filterSearch" oninput="debouncedFilter()" type="text" placeholder="N° facture ou client" class="w-full border-2 border-gray-300 rounded-lg px-4 py-2 bg-white">
+								</div>
+				
+									<div>
+										<label class="block text-sm font-medium text-gray-700 mb-2">Statut</label>
+										<select id="filterStatus" onchange="filterInvoices()" 
+												class="w-full border-2 border-gray-300 rounded-lg px-4 py-2 bg-white">
+											<option value="">Tous les statuts</option>
+											<option value="brouillon">Brouillon</option>
+											<option value="envoyée">Envoyée</option>
+											<option value="payée">Payée</option>
+											<option value="annulée">Annulée</option>
+										</select>
+									</div>
+									<div>
+										<label class="block text-sm font-medium text-gray-700 mb-2">Client</label>
+										<select id="filterClient" onchange="filterInvoices()" 
+												class="w-full border-2 border-gray-300 rounded-lg px-4 py-2 bg-white">
+											<option value="">Tous les clients</option>
+											<!-- Les clients seront ajoutés dynamiquement -->
+										</select>
+									</div>
+									<div>
+										<label class="block text-sm font-medium text-gray-700 mb-2">Date de</label>
+										<input type="date" id="filterDateFrom" onchange="filterInvoices()" 
+											   class="w-full border-2 border-gray-300 rounded-lg px-4 py-2 bg-white">
+									</div>
+									<div class="flex items-end space-x-2">
+										<button onclick="resetFilters()" class="w-full py-3 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 font-medium">
+											<i class="fas fa-redo mr-2"></i>Réinitialiser
+										</button>
+									</div>
+								</div>
+							</div>
+
+							<!-- Liste des factures -->
+							<div class="overflow-hidden rounded-xl border border-gray-200">
+								<div class="overflow-x-auto">
+									<table class="min-w-full divide-y divide-gray-200">
+										<thead class="bg-gray-50">
+											<tr>
+												<th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">N° Facture</th>
+												<th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Client</th>
+												<th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Date</th>
+												<th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Montant</th>
+												<th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Statut</th>
+												<th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Actions</th>
+											</tr>
+										</thead>
+										<tbody id="invoicesTable" class="bg-white divide-y divide-gray-200">
+											<!-- Les factures seront insérées ici -->
+										</tbody>
+									</table>
+								</div>
+							</div>
+						</div>
+					</div>
+
+					<!-- Clients Content -->
+					<div id="clientsContent" class="content-section hidden">
+						<div class="bg-white rounded-xl shadow-lg p-6">
+							<div class="flex flex-col lg:flex-row lg:items-center justify-between mb-8">
+								<div>
+									<h2 class="text-3xl font-bold text-gray-800 mb-2">Gestion des Clients</h2>
+									<p class="text-gray-600">Gérez votre base de données clients</p>
+								</div>
+								<button onclick="showAddClientModal()" class="btn-primary px-6 py-3 rounded-xl font-semibold flex items-center space-x-2 mt-4 lg:mt-0">
+									<i class="fas fa-plus"></i>
+									<span>Nouveau client</span>
+								</button>
+							</div>
+							<div id="clientsList">
+								<!-- La liste des clients sera insérée ici -->
+							</div>
+						</div>
+					</div>
+
+					<!-- Produits Content -->
+					<div id="produitsContent" class="content-section hidden">
+						<div class="bg-white rounded-xl shadow-lg p-6">
+							<div class="flex flex-col lg:flex-row lg:items-center justify-between mb-8">
+								<div>
+									<h2 class="text-3xl font-bold text-gray-800 mb-2">Gestion des Produits</h2>
+									<p class="text-gray-600">Catalogue des produits et services</p>
+								</div>
+								<button onclick="showAddProduitModal()" class="btn-primary px-6 py-3 rounded-xl font-semibold flex items-center space-x-2 mt-4 lg:mt-0">
+									<i class="fas fa-plus"></i>
+									<span>Nouveau produit</span>
+								</button>
+							</div>
+							<div id="produitsList">
+								<!-- La liste des produits sera insérée ici -->
+							</div>
+						</div>
+					</div>
+
+					<!-- Entreprises Content -->
+					<div id="entreprisesContent" class="content-section hidden">
+						<div class="bg-white rounded-xl shadow-lg p-6">
+							<div class="flex flex-col lg:flex-row lg:items-center justify-between mb-8">
+								<div>
+									<h2 class="text-3xl font-bold text-gray-800 mb-2">Gestion des Entreprises</h2>
+									<p class="text-gray-600">Profils d'entreprises émettrice</p>
+								</div>
+								<button onclick="showAddEntrepriseModal()" class="btn-primary px-6 py-3 rounded-xl font-semibold flex items-center space-x-2 mt-4 lg:mt-0">
+									<i class="fas fa-plus"></i>
+									<span>Nouvelle entreprise</span>
+								</button>
+							</div>
+							<div id="entreprisesList">
+								<!-- La liste des entreprises sera insérée ici -->
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Bouton flottant -->
+		<div class="floating-btn" onclick="showCreateInvoiceModal()">
+			<i class="fas fa-plus"></i>
+		</div>
+	</div>
+
+	<!-- =========================================== -->
+	<!-- MODALES COMMUNES -->
+	<!-- =========================================== -->
+
+	<!-- Modal Nouvelle Facture (conteneur dynamique) -->
+	<div id="invoiceModal" class="modal">
+		<div class="modal-content">
+			<div class="flex justify-between items-center mb-6">
+				<h3 class="text-2xl font-bold text-gray-800">Nouvelle Facture</h3>
+				<button onclick="closeModal('invoiceModal')" class="text-gray-500 hover:text-gray-700">
+					<i class="fas fa-times text-2xl"></i>
+				</button>
+			</div>
+
+			<!-- Le contenu du formulaire est injecté dynamiquement dans cet élément -->
+			<div id="invoiceForm"></div>
+		</div>
+	</div>
+
+	<!-- Modal Client (manquant auparavant) -->
+	<div id="clientModal" class="modal">
+		<div class="modal-content">
+			<div class="flex justify-between items-center mb-6">
+				<h3 class="text-2xl font-bold text-gray-800" id="clientModalTitle">Nouveau Client</h3>
+				<button onclick="closeModal('clientModal')" class="text-gray-500 hover:text-gray-700">
+					<i class="fas fa-times text-2xl"></i>
+				</button>
+			</div>
+			<form id="clientForm" class="space-y-6">
+				<input type="hidden" id="clientId">
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Type</label>
+						<select id="clientType" class="w-full border-2 border-gray-300 rounded-lg px-4 py-2">
+							<option value="particulier">Particulier</option>
+							<option value="entreprise">Entreprise</option>
+						</select>
+					</div>
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Nom *</label>
+						<input type="text" id="clientName" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="Nom du client">
+					</div>
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Email</label>
+						<input type="email" id="clientEmail" class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="email@exemple.com">
+					</div>
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Téléphone</label>
+						<input type="tel" id="clientPhone" class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="+237 XXX XXX XXX">
+					</div>
+					<div class="md:col-span-2">
+						<label class="block text-sm font-medium text-gray-700 mb-2">Adresse</label>
+						<textarea id="clientAddress" rows="3" class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="Adresse complète"></textarea>
+					</div>
+				</div>
+
+				<div class="flex justify-end space-x-4 pt-6 border-t">
+					<button type="button" onclick="closeModal('clientModal')" class="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium">Annuler</button>
+					<button type="submit" class="btn-primary px-6 py-3 rounded-xl font-semibold"><i class="fas fa-save mr-2"></i>Enregistrer</button>
+				</div>
+			</form>
+		</div>
+	</div>
+
+	<!-- Modal d'aperçu / preview (manquante auparavant) -->
+	<div id="previewModal" class="modal">
+		<div class="modal-content">
+			<div class="flex justify-between items-center mb-6">
+				<h3 class="text-2xl font-bold text-gray-800">Aperçu de la facture</h3>
+				<button onclick="closeModal('previewModal')" class="text-gray-500 hover:text-gray-700">
+					<i class="fas fa-times text-2xl"></i>
+				</button>
+			</div>
+			<div id="invoicePreview"></div>
+			<div class="flex justify-end space-x-4 pt-6 border-t">
+				<button onclick="printInvoice()" class="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium">Imprimer</button>
+				<button onclick="generatePDF()" class="btn-primary px-6 py-3 rounded-xl font-semibold"><i class="fas fa-file-pdf mr-2"></i>Télécharger PDF</button>
+			</div>
+		</div>
+	</div>
+
+	<!-- Modal Produit -->
+	<div id="produitModal" class="modal">
+		<div class="modal-content">
+			<div class="flex justify-between items-center mb-6">
+				<h3 class="text-2xl font-bold text-gray-800" id="produitModalTitle">Nouveau Produit</h3>
+				<button onclick="closeModal('produitModal')" class="text-gray-500 hover:text-gray-700">
+					<i class="fas fa-times text-2xl"></i>
+				</button>
+			</div>
+			<form id="produitForm" class="space-y-6">
+				<input type="hidden" id="produitId">
+				
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Référence *</label>
+						<input type="text" id="produitReference" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="PROD-001">
+					</div>
+					
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Désignation *</label>
+						<input type="text" id="produitDesignation" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="Nom du produit">
+					</div>
+					
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Prix unitaire (FCFA) *</label>
+						<input type="number" step="0.01" id="produitPrix" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="0.00">
+					</div>
+					
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Unité *</label>
+						<select id="produitUnite" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2">
+							<option value="unité">Unité</option>
+							<option value="kg">Kilogramme</option>
+							<option value="litre">Litre</option>
+							<option value="mètre">Mètre</option>
+							<option value="sac">Sac</option>
+							<option value="heure">Heure</option>
+							<option value="jour">Jour</option>
+						</select>
+					</div>
+					
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">TVA (%) *</label>
+						<input type="number" step="0.01" id="produitTva" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" value="19.25">
+					</div>
+					
+					<div class="md:col-span-2">
+						<label class="block text-sm font-medium text-gray-700 mb-2">Description</label>
+						<textarea id="produitDescription" rows="3" class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="Description détaillée du produit"></textarea>
+					</div>
+				</div>
+				
+				<div class="flex justify-end space-x-4 pt-6 border-t">
+					<button type="button" onclick="closeModal('produitModal')" class="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium">
+						Annuler
+					</button>
+					<button type="submit" class="btn-primary px-6 py-3 rounded-xl font-semibold">
+						<i class="fas fa-save mr-2"></i>Enregistrer
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+
+	<!-- Modal Entreprise -->
+	<div id="entrepriseModal" class="modal">
+		<div class="modal-content">
+			<div class="flex justify-between items-center mb-6">
+				<h3 class="text-2xl font-bold text-gray-800" id="entrepriseModalTitle">Nouvelle Entreprise</h3>
+				<button onclick="closeModal('entrepriseModal')" class="text-gray-500 hover:text-gray-700">
+					<i class="fas fa-times text-2xl"></i>
+				</button>
+			</div>
+			<form id="entrepriseForm" class="space-y-6">
+				<input type="hidden" id="entrepriseId">
+				
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Nom entreprise *</label>
+						<input type="text" id="entrepriseNom" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="Raison sociale">
+					</div>
+					
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Type *</label>
+						<select id="entrepriseType" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2">
+							<option value="SARL">SARL</option>
+							<option value="SA">SA</option>
+							<option value="EURL">EURL</option>
+							<option value="EI">Entreprise Individuelle</option>
+						</select>
+					</div>
+					
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">RCCM *</label>
+						<input type="text" id="entrepriseRccm" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="RC/DLA/2024">
+					</div>
+					
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">NIU *</label>
+						<input type="text" id="entrepriseNiu" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="M0123456">
+					</div>
+					
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Téléphone *</label>
+						<input type="tel" id="entreprisePhone" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="+237 XXX XXX XXX">
+					</div>
+					
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Email *</label>
+						<input type="email" id="entrepriseEmail" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="contact@entreprise.com">
+					</div>
+					
+					<div class="md:col-span-2">
+						<label class="block text-sm font-medium text-gray-700 mb-2">Adresse *</label>
+						<textarea id="entrepriseAddress" rows="3" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="Adresse complète"></textarea>
+					</div>
+				</div>
+				
+				<div class="flex justify-end space-x-4 pt-6 border-t">
+					<button type="button" onclick="closeModal('entrepriseModal')" class="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium">
+						Annuler
+					</button>
+					<button type="submit" class="btn-primary px-6 py-3 rounded-xl font-semibold">
+						<i class="fas fa-save mr-2"></i>Enregistrer
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+
+	<!-- Modal Utilisateur (Gestion des comptes) -->
+	<div id="userModal" class="modal">
+		<div class="modal-content">
+			<div class="flex justify-between items-center mb-6">
+				<h3 class="text-2xl font-bold text-gray-800" id="userModalTitle">Nouvel Utilisateur</h3>
+				<button onclick="closeModal('userModal')" class="text-gray-500 hover:text-gray-700">
+					<i class="fas fa-times text-2xl"></i>
+				</button>
+			</div>
+			<form id="userForm" class="space-y-6">
+				<input type="hidden" id="userId">
+				
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Nom complet *</label>
+						<input type="text" id="userFullName" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="Jean Dupont">
+					</div>
+					
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Email *</label>
+						<input type="email" id="userEmail" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="jean@entreprise.com">
+					</div>
+					
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Rôle *</label>
+						<select id="userRole" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2">
+							<option value="admin">Administrateur</option>
+							<option value="comptable">Comptable</option>
+							<option value="employe">Employé</option>
+						</select>
+					</div>
+					
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Mot de passe *</label>
+						<input type="password" id="userPassword" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="********">
+					</div>
+					
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Téléphone</label>
+						<input type="tel" id="userPhone" class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" placeholder="+237 XXX XXX XXX">
+					</div>
+					
+					<div>
+						<label class="block text-sm font-medium text-gray-700 mb-2">Statut</label>
+						<select id="userStatus" class="w-full border-2 border-gray-300 rounded-lg px-4 py-2">
+							<option value="actif">Actif</option>
+							<option value="inactif">Inactif</option>
+						</select>
+					</div>
+				</div>
+				
+				<div class="flex justify-end space-x-4 pt-6 border-t">
+					<button type="button" onclick="closeModal('userModal')" class="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium">
+						Annuler
+					</button>
+					<button type="submit" class="btn-primary px-6 py-3 rounded-xl font-semibold">
+						<i class="fas fa-save mr-2"></i>Enregistrer
+					</button>
+				</div>
+			</form>
+		</div>
+	</div>
+
+	<!-- Script principal -->
+	<script>
+		// ===========================================
+		// DONNÉES ET ÉTAT DE L'APPLICATION
+		// ===========================================
+		
+		// Générer un ID unique
+		const generateId = () => Date.now().toString(36) + Math.random().toString(36).substr(2);
+		
+		// Données initiales (stockées dans localStorage)
+		const initialData = {
+			// Comptes utilisateurs par défaut
+			users: [
+				{ 
+					id: generateId(), 
+					email: 'admin@facturation.com', 
+					password: 'admin123', 
+					name: 'Administrateur Principal', 
+					role: 'admin',
+					phone: '+237 699 887 766',
+					status: 'actif',
+					createdAt: new Date().toISOString()
+				},
+				{ 
+					id: generateId(), 
+					email: 'comptable@facturation.com', 
+					password: 'comptable123', 
+					name: 'Comptable Principal', 
+					role: 'comptable',
+					phone: '+237 677 554 433',
+					status: 'actif',
+					createdAt: new Date().toISOString()
+				}
+			],
+			
+			// Données de facturation
+			invoices: [],
+			clients: [],
+			products: [],
+			companies: []
+		};
+
+		// État global de l'application
+		let appState = {
+			currentUser: null,
+			user: {},
+			currentSection: 'login', // 'login', 'management', 'app'
+			currentPage: 'dashboard',
+			editingId: null
+		};
+
+		// Historique de navigation interne (pour bouton Retour)
+		appState.history = [];
+
+		// Permissions centralisées
+		const PERMISSIONS = {
+			admin: {
+				invoices: { create: true, edit: true, delete: true, view: true, pdf: true, changeStatus: true },
+				clients: { create: true, edit: true, delete: true, view: true },
+				products: { create: true, edit: true, delete: true, view: true },
+				reports: { dashboard: true, stats: true, export: true },
+				admin: { manageUsers: true, manageRoles: true, settings: true, logs: true, importExport: true }
+			},
+			comptable: {
+				invoices: { create: true, edit: true, delete: false, view: true, pdf: true, changeStatus: false },
+				clients: { create: false, edit: false, delete: false, view: true },
+				products: { create: false, edit: false, delete: false, view: true },
+				reports: { dashboard: false, stats: true, export: false },
+				admin: { manageUsers: false, manageRoles: false, settings: false, logs: false, importExport: false }
+			}
+		};
+
+		function hasPermission(module, action) {
+			const role = appState.user?.role || appState.currentUser?.role || 'comptable';
+			const perms = PERMISSIONS[role] || {};
+			if (!perms[module]) return false;
+			return !!perms[module][action];
+		}
+
+		function requirePermission(module, action) {
+			if (!hasPermission(module, action)) {
+				showError('Accès refusé – permission insuffisante');
+				return false;
+			}
+			return true;
+		}
+
+		function applyPermissions() {
+			// Remove menu items and UI elements that are not allowed for the current role
+			// Sidebar navigation buttons (remove from DOM if not allowed)
+			['dashboard','factures','clients','produits','entreprises'].forEach(section => {
+				let allow = true;
+				switch(section) {
+					case 'dashboard': allow = hasPermission('reports','dashboard'); break;
+					case 'factures': allow = hasPermission('invoices','view'); break;
+					case 'clients': allow = hasPermission('clients','view'); break;
+					case 'produits': allow = hasPermission('products','view'); break;
+					case 'entreprises': allow = hasPermission('admin','settings'); break;
+				}
+				const btn = document.querySelector(`[onclick="navigate('${section}')"]`);
+				if (btn && !allow) btn.remove();
+			});
+
+			// Remove user-management link from user menu if not admin
+			const userMgmtLink = document.querySelector(`[onclick="switchToUserManagement()"]`);
+			if (userMgmtLink && !hasPermission('admin','manageUsers')) userMgmtLink.remove();
+
+			// Remove 'Nouvel utilisateur' button if not admin
+			const newUserBtn = document.querySelector(`[onclick="showAddUserModal()"]`);
+			if (newUserBtn && !hasPermission('admin','manageUsers')) newUserBtn.remove();
+		}
+
+		// ===========================================
+		// FONCTIONS D'INITIALISATION
+		// ===========================================
+
+		document.addEventListener('DOMContentLoaded', function() {
+			// Initialiser les données dans localStorage si vide
+			initializeData();
+			
+			// Mettre à jour la date et l'heure
+			updateDateTime();
+			setInterval(updateDateTime, 60000);
+			
+			// Gestionnaires d'événements
+			document.getElementById('loginForm').addEventListener('submit', handleLogin);
+			document.getElementById('clientForm').addEventListener('submit', handleClientSubmit);
+			document.getElementById('produitForm').addEventListener('submit', handleProduitSubmit);
+			document.getElementById('entrepriseForm').addEventListener('submit', handleEntrepriseSubmit);
+			document.getElementById('userForm').addEventListener('submit', handleUserSubmit);
+			
+			// Fermer les modales avec Escape
+			document.addEventListener('keydown', function(e) {
+				if (e.key === 'Escape') {
+					closeAllModals();
+				}
+			});
+		});
+
+		function initializeData() {
+			// Vérifier si les données existent dans localStorage
+			if (!localStorage.getItem('facturationUsers')) {
+				localStorage.setItem('facturationUsers', JSON.stringify(initialData.users));
+			}
+			
+			if (!localStorage.getItem('facturationInvoices')) {
+				localStorage.setItem('facturationInvoices', JSON.stringify(initialData.invoices));
+			}
+			
+			if (!localStorage.getItem('facturationClients')) {
+				localStorage.setItem('facturationClients', JSON.stringify(initialData.clients));
+			}
+			
+			if (!localStorage.getItem('facturationProducts')) {
+				localStorage.setItem('facturationProducts', JSON.stringify(initialData.products));
+			}
+			
+			if (!localStorage.getItem('facturationCompanies')) {
+				localStorage.setItem('facturationCompanies', JSON.stringify(initialData.companies));
+			}
+		}
+
+		// ===========================================
+		// FONCTIONS D'UTILITAIRE
+		// ===========================================
+
+		function updateDateTime() {
+			const now = new Date();
+			const options = { 
+				weekday: 'long', 
+				year: 'numeric', 
+				month: 'long', 
+				day: 'numeric',
+				hour: '2-digit',
+				minute: '2-digit'
+			};
+			const dateTimeString = now.toLocaleDateString('fr-FR', options);
+			
+			// Mettre à jour toutes les sections
+			const elements = ['appDateTime', 'managementDateTime'];
+			elements.forEach(id => {
+				const element = document.getElementById(id);
+				if (element) {
+					element.textContent = dateTimeString;
+				}
+			});
+		}
+
+		function togglePassword() {
+			const passwordField = document.getElementById('loginPassword');
+			const type = passwordField.getAttribute('type') === 'password' ? 'text' : 'password';
+			passwordField.setAttribute('type', type);
+		}
+
+		function formatCurrency(amount) {
+			return new Intl.NumberFormat('fr-FR', { 
+				minimumFractionDigits: 0,
+				maximumFractionDigits: 0
+			}).format(amount) + ' FCFA';
+		}
+
+		function formatDate(dateString) {
+			const date = new Date(dateString);
+			return date.toLocaleDateString('fr-FR');
+		}
+
+		// ===========================================
+		// GESTION DE L'AUTHENTIFICATION
+		// ===========================================
+
+		function handleLogin(e) {
+			e.preventDefault();
+			
+			const email = document.getElementById('loginEmail').value;
+			const password = document.getElementById('loginPassword').value;
+			
+			// Récupérer les utilisateurs depuis localStorage
+			const users = JSON.parse(localStorage.getItem('facturationUsers')) || [];
+			
+			// Trouver l'utilisateur
+			const user = users.find(u => u.email === email && u.password === password);
+			
+			if (user) {
+				if (user.status === 'inactif') {
+					showError('Ce compte est désactivé. Contactez l\'administrateur.');
+					return;
+				}
+				
+				appState.currentUser = user;
+				appState.user = { role: user.role };
+			
+				// Rediriger directement vers l'application après authentification réussie
+				showAppSection();
+				applyPermissions();
+				
+				showNotification('Connexion réussie !', 'success');
+			} else {
+				showError('Veuillez entrer la bonne information.');
+			}
+		}
+
+		function showSectionChoice() {
+			// Cacher toutes les sections
+			hideAllSections();
+			
+			// Montrer un choix modal (simplifié)
+			const choice = confirm('Vous êtes connecté en tant qu\'administrateur. Souhaitez-vous:\n\nOK = Aller à l\'application\nAnnuler = Gérer les comptes utilisateurs');
+			
+			if (choice) {
+				showAppSection();
+			} else {
+				showManagementSection();
+			}
+		}
+
+		function logout() {
+			if (confirm('Êtes-vous sûr de vouloir vous déconnecter ?')) {
+				appState.currentUser = null;
+				hideAllSections();
+				document.getElementById('loginSection').classList.remove('hidden');
+				document.getElementById('loginForm').reset();
+				showNotification('Déconnexion réussie', 'info');
+			}
+		}
+
+		// ===========================================
+		// GESTION DES SECTIONS
+		// ===========================================
+
+		function hideAllSections() {
+			document.getElementById('loginSection').classList.add('hidden');
+			document.getElementById('userManagementSection').classList.add('hidden');
+			document.getElementById('appSection').classList.add('hidden');
+		}
+
+		function showAppSection() {
+			hideAllSections();
+			document.getElementById('appSection').classList.remove('hidden');
+			
+			// Mettre à jour l'interface utilisateur
+			document.getElementById('currentUserName').textContent = appState.currentUser.name;
+			document.getElementById('currentUserEmail').textContent = appState.currentUser.email;
+			document.getElementById('currentUserRole').textContent = getRoleText(appState.currentUser.role);
+			document.getElementById('welcomeUser').textContent = appState.currentUser.name;
+			
+			// Initialiser les données
+			updateStats();
+			loadRecentInvoices();
+			updateCounts();
+			navigate('dashboard');
+
+			// Réinitialiser l'historique navigation à la connexion
+			appState.history = [];
+			updateBackButton();
+
+			// Appliquer permissions UI selon le rôle connecté
+			applyPermissions();
+		}
+
+		function showManagementSection() {
+			hideAllSections();
+			document.getElementById('userManagementSection').classList.remove('hidden');
+			
+			// Charger les utilisateurs
+			loadUsers();
+		}
+
+		function switchToUserManagement() {
+			if (appState.currentUser.role === 'admin') {
+				showManagementSection();
+			} else {
+				showError('Accès réservé aux administrateurs');
+			}
+		}
+
+		function switchToApp() {
+			showAppSection();
+		}
+
+		function getRoleText(role) {
+			switch(role) {
+				case 'admin': return 'Administrateur';
+				case 'comptable': return 'Comptable';
+				case 'employe': return 'Employé';
+				default: return role;
+			}
+		}
+
+		// ===========================================
+		// GESTION DES UTILISATEURS
+		// ===========================================
+
+		function loadUsers() {
+			const users = JSON.parse(localStorage.getItem('facturationUsers')) || [];
+			const tbody = document.getElementById('usersTable');
+			
+			tbody.innerHTML = users.map(user => `
+				<tr class="hover:bg-gray-50">
+					<td class="px-6 py-4 whitespace-nowrap">
+						<div class="flex items-center">
+							<div class="w-10 h-10 bg-gradient-to-r from-blue-600 to-blue-800 rounded-full flex items-center justify-center text-white mr-3">
+								<i class="fas fa-user"></i>
+							</div>
+							<div>
+								<div class="font-medium text-gray-900">${user.name}</div>
+								<div class="text-sm text-gray-500">${getRoleText(user.role)}</div>
+							</div>
+						</div>
+					</td>
+					<td class="px-6 py-4 whitespace-nowrap">
+						<div class="text-gray-900">${user.email}</div>
+					</td>
+					<td class="px-6 py-4 whitespace-nowrap">
+						<span class="px-3 py-1 rounded-full text-xs font-semibold ${user.role === 'admin' ? 'bg-purple-100 text-purple-800' : user.role === 'comptable' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'}">
+							${getRoleText(user.role)}
+						</span>
+					</td>
+					<td class="px-6 py-4 whitespace-nowrap text-gray-500">
+						${formatDate(user.createdAt)}
+					</td>
+					<td class="px-6 py-4 whitespace-nowrap">
+						<span class="px-3 py-1 rounded-full text-xs font-semibold ${user.status === 'actif' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+							${user.status === 'actif' ? 'Actif' : 'Inactif'}
+						</span>
+					</td>
+					<td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+						${ hasPermission('admin','manageUsers') ? `
+						<button onclick="editUser('${user.id}')" class="text-blue-600 hover:text-blue-900 mr-3">
+							<i class="fas fa-edit"></i>
+						</button>
+						<button onclick="deleteUser('${user.id}')" class="text-red-600 hover:text-red-900">
+							<i class="fas fa-trash"></i>
+						</button>
+						` : '' }
+					</td>
+				</tr>
+			`).join('');
+		}
+
+		function showAddUserModal() {
+			if (!requirePermission('admin','manageUsers')) return;
+			document.getElementById('userModalTitle').textContent = 'Nouvel Utilisateur';
+			document.getElementById('userForm').reset();
+			appState.editingId = null;
+			openModal('userModal');
+		}
+
+		function editUser(userId) {
+			const users = JSON.parse(localStorage.getItem('facturationUsers')) || [];
+			const user = users.find(u => u.id === userId);
+			
+			if (user) {
+				document.getElementById('userModalTitle').textContent = 'Modifier Utilisateur';
+				document.getElementById('userId').value = user.id;
+				document.getElementById('userFullName').value = user.name;
+				document.getElementById('userEmail').value = user.email;
+				document.getElementById('userRole').value = user.role;
+				document.getElementById('userPassword').value = ''; // Ne pas montrer le mot de passe
+				document.getElementById('userPhone').value = user.phone || '';
+				document.getElementById('userStatus').value = user.status || 'actif';
+				
+				appState.editingId = userId;
+				openModal('userModal');
+			}
+		}
+
+		function handleUserSubmit(e) {
+			e.preventDefault();
+			
+			const users = JSON.parse(localStorage.getItem('facturationUsers')) || [];
+			
+			const userData = {
+				id: appState.editingId || generateId(),
+				name: document.getElementById('userFullName').value,
+				email: document.getElementById('userEmail').value,
+				role: document.getElementById('userRole').value,
+				password: document.getElementById('userPassword').value || users.find(u => u.id === appState.editingId)?.password,
+				phone: document.getElementById('userPhone').value,
+				status: document.getElementById('userStatus').value,
+				createdAt: appState.editingId ? users.find(u => u.id === appState.editingId)?.createdAt : new Date().toISOString()
+			};
+			
+			if (appState.editingId) {
+				// Mettre à jour l'utilisateur
+				const index = users.findIndex(u => u.id === appState.editingId);
+				if (index !== -1) {
+					users[index] = { ...users[index], ...userData };
+				}
+			} else {
+				// Ajouter un nouvel utilisateur
+				users.push(userData);
+			}
+			
+			// Sauvegarder
+			localStorage.setItem('facturationUsers', JSON.stringify(users));
+			
+			// Recharger la liste
+			loadUsers();
+			
+			// Fermer la modale
+			closeModal('userModal');
+			
+			// Notification
+			showNotification(`Utilisateur ${appState.editingId ? 'modifié' : 'ajouté'} avec succès`, 'success');
+		}
+
+		function deleteUser(userId) {
+			if (!requirePermission('admin','manageUsers')) return;
+			
+			if (confirm('Êtes-vous sûr de vouloir supprimer cet utilisateur ?')) {
+				const users = JSON.parse(localStorage.getItem('facturationUsers')) || [];
+				const updatedUsers = users.filter(u => u.id !== userId);
+				localStorage.setItem('facturationUsers', JSON.stringify(updatedUsers));
+				loadUsers();
+				showNotification('Utilisateur supprimé avec succès', 'success');
+			}
+		}
+
+		// ===========================================
+		// GESTION DE LA NAVIGATION DANS L'APPLICATION
+		// ===========================================
+		
+		function navigate(page, skipHistory = false) {
+			// Cacher tous les contenus
+			document.querySelectorAll('.content-section').forEach(el => {
+				el.classList.add('hidden');
+			});
+			
+			// Afficher le contenu demandé
+			const contentId = page + 'Content';
+			document.getElementById(contentId).classList.remove('hidden');
+			
+			// Mettre à jour la navigation active
+			setActiveNav(page);
+			
+			// Charger les données spécifiques
+			switch(page) {
+				case 'dashboard':
+					updateStats();
+					loadRecentInvoices();
+					break;
+				case 'factures':
+					loadInvoices();
+					break;
+				case 'clients':
+					loadClients();
+					break;
+				case 'produits':
+					loadProduits();
+					break;
+				case 'entreprises':
+					loadEntreprises();
+					break;
+			}
+			
+			// Gérer l'historique interne (si demandé)
+			if (!skipHistory && appState.currentPage && appState.currentPage !== page) {
+				appState.history.push(appState.currentPage);
+			}
+
+			appState.currentPage = page;
+			updateBackButton();
+		}
+
+		function setActiveNav(page) {
+			// Désactiver tous les boutons
+			document.querySelectorAll('button.dashboard-btn, button.factures-btn, button.clients-btn, button.produits-btn, button.entreprises-btn').forEach(btn => {
+				btn.classList.remove('sidebar-active');
+			});
+			
+			// Activer le bouton courant
+			const activeBtn = document.querySelector(`.${page}-btn`);
+			if (activeBtn) {
+				activeBtn.classList.add('sidebar-active');
+			}
+		}
+
+		// Gestion du bouton retour (utilise appState.history)
+		function updateBackButton() {
+			const btn = document.getElementById('backButton');
+			if (!btn) return;
+			if (appState.history && appState.history.length > 0) {
+				btn.classList.remove('hidden');
+			} else {
+				btn.classList.add('hidden');
+			}
+		}
+
+		function goBack() {
+			if (!appState.history || appState.history.length === 0) return;
+			const previous = appState.history.pop();
+			// Naviguer sans pousser dans l'historique
+			navigate(previous, true);
+			updateBackButton();
+		}
+
+		// ===========================================
+		// GESTION DES MODALES
+		// ===========================================
+
+		function openModal(modalId) {
+			document.getElementById(modalId).style.display = 'block';
+			document.body.style.overflow = 'hidden';
+		}
+
+		function closeModal(modalId) {
+			document.getElementById(modalId).style.display = 'none';
+			document.body.style.overflow = 'auto';
+			appState.editingId = null;
+		}
+
+		function closeAllModals() {
+			document.querySelectorAll('.modal').forEach(modal => {
+				modal.style.display = 'none';
+			});
+			document.body.style.overflow = 'auto';
+		}
+
+		function toggleUserMenu() {
+			const menu = document.getElementById('userMenu');
+			menu.classList.toggle('hidden');
+		}
+
+		function toggleSidebar() {
+			const sidebar = document.getElementById('mainSidebar');
+			const overlay = document.getElementById('mobileSidebarOverlay');
+			if (!sidebar) return;
+			sidebar.classList.toggle('mobile-open');
+			if (overlay) overlay.classList.toggle('show');
+		}
+
+		async function generatePDF() {
+			const preview = document.getElementById('invoicePreview');
+			if (!preview) {
+				showError('Aucun aperçu de facture disponible pour générer le PDF.');
+				return;
+			}
+			showNotification('Génération du PDF en cours...', 'info');
+			try {
+				const canvas = await html2canvas(preview);
+				const imgData = canvas.toDataURL('image/png');
+				const { jsPDF } = window.jspdf || {};
+				if (!jsPDF) {
+					showError('Bibliothèque jsPDF non disponible.');
+					return;
+				}
+				const pdf = new jsPDF('p', 'mm', 'a4');
+				const imgProps = pdf.getImageProperties(imgData);
+				const pdfWidth = pdf.internal.pageSize.getWidth();
+				const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+				pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+				pdf.save('facture.pdf');
+				showNotification('PDF généré avec succès', 'success');
+			} catch (err) {
+				console.error(err);
+				showError('Erreur lors de la génération du PDF.');
+			}
+		}
+
+		// ===========================================
+		// GESTION DES STATISTIQUES
+		// ===========================================
+
+		function updateStats() {
+			const invoices = JSON.parse(localStorage.getItem('facturationInvoices')) || [];
+			const clients = JSON.parse(localStorage.getItem('facturationClients')) || [];
+			const products = JSON.parse(localStorage.getItem('facturationProducts')) || [];
+			
+			// Totaux
+			document.getElementById('totalInvoices').textContent = invoices.length;
+			document.getElementById('totalRevenue').textContent = formatCurrency(
+				invoices.reduce((sum, inv) => sum + (inv.totalTTC || 0), 0)
+			);
+			document.getElementById('activeClients').textContent = clients.length;
+			document.getElementById('totalProducts').textContent = products.length;
+			
+			// Mises à jour des compteurs
+			updateCounts();
+			
+			// Statistiques du mois
+			const thisMonth = new Date().getMonth();
+			const thisYear = new Date().getFullYear();
+			
+			const invoicesThisMonth = invoices.filter(inv => {
+				const invDate = new Date(inv.date);
+				return invDate.getMonth() === thisMonth && invDate.getFullYear() === thisYear;
+			});
+			
+			const revenueThisMonth = invoicesThisMonth.reduce((sum, inv) => sum + (inv.totalTTC || 0), 0);
+			
+			document.getElementById('statsMonth').textContent = invoicesThisMonth.length;
+			document.getElementById('statsAmount').textContent = formatCurrency(revenueThisMonth);
+		}
+
+		function updateCounts() {
+			const invoices = JSON.parse(localStorage.getItem('facturationInvoices')) || [];
+			const clients = JSON.parse(localStorage.getItem('facturationClients')) || [];
+			const products = JSON.parse(localStorage.getItem('facturationProducts')) || [];
+			
+			document.getElementById('factureCount').textContent = invoices.length;
+			document.getElementById('clientCount').textContent = clients.length;
+			document.getElementById('produitCount').textContent = products.length;
+		}
+
+		// ===========================================
+		// GESTION DES FACTURES
+		// ===========================================
+
+		function loadRecentInvoices() {
+			const invoices = JSON.parse(localStorage.getItem('facturationInvoices')) || [];
+			const clients = JSON.parse(localStorage.getItem('facturationClients')) || [];
+			const tbody = document.getElementById('recentInvoices');
+			
+			// Prendre les 5 dernières factures
+			const recentInvoices = [...invoices].sort((a, b) => 
+ 
+				new Date(b.date) - new Date(a.date)
+			).slice(0, 5);
+			
+			tbody.innerHTML = recentInvoices.map(invoice => {
+				const client = clients.find(c => c.id === invoice.clientId) || {};
+					return `
+					<tr class="hover:bg-gray-50">
+						<td class="py-4">
+							<div class="font-semibold text-gray-800">${invoice.number || 'N/A'}</div>
+						</td>
+						<td class="py-4">
+							<div class="text-gray-700">${client.name || 'Client inconnu'}</div>
+						</td>
+						<td class="py-4">
+							<div class="font-semibold">${formatCurrency(invoice.totalTTC || 0)}</div>
+						</td>
+						<td class="py-4">
+							<span class="px-3 py-1 rounded-full text-xs font-semibold ${invoice.status === 'payée' ? 'bg-green-100 text-green-800' : invoice.status === 'envoyée' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}">
+								${invoice.status || 'Brouillon'}
+							</span>
+						</td>
+						<td class="py-4 text-right">
+							${ hasPermission('invoices','view') ? `<button onclick="viewInvoice('${invoice.id}')" class="text-blue-600 hover:text-blue-800 mr-3"><i class="fas fa-eye"></i></button>` : '' }
+							${ hasPermission('invoices','edit') ? `<button onclick="editInvoice('${invoice.id}')" class="text-green-600 hover:text-green-800 mr-3"><i class="fas fa-edit"></i></button>` : '' }
+							${ hasPermission('invoices','pdf') ? `<button onclick="downloadInvoicePDF('${invoice.id}')" class="text-purple-600 hover:text-purple-800 mr-3"><i class="fas fa-file-pdf"></i></button>` : '' }
+						</td>
+					</tr>
+				`;
+			}).join('');
+			
+			if (recentInvoices.length === 0) {
+				tbody.innerHTML = `
+					<tr>
+						<td colspan="5" class="py-8 text-center text-gray-500">
+							<i class="fas fa-file-invoice text-3xl mb-3"></i>
+							<p>Aucune facture trouvée</p>
+							<button onclick="showCreateInvoiceModal()" class="mt-4 text-blue-600 hover:underline">
+								Créer votre première facture
+							</button>
+						</td>
+					</tr>
+				`;
+			}
+		}
+
+		function loadInvoices() {
+			const invoices = JSON.parse(localStorage.getItem('facturationInvoices')) || [];
+			const clients = JSON.parse(localStorage.getItem('facturationClients')) || [];
+			const tbody = document.getElementById('invoicesTable');
+			
+			// Remplir le filtre des clients
+			const clientFilter = document.getElementById('filterClient');
+			clientFilter.innerHTML = '<option value="">Tous les clients</option>' + 
+				clients.map(client => `<option value="${client.id}">${client.name}</option>`).join('');
+			
+			body.innerHTML = invoices.map(invoice => {
+				const client = clients.find(c => c.id === invoice.clientId) || {};
+				return `
+					<tr class="hover:bg-gray-50">
+						<td class="px-6 py-4 whitespace-nowrap">
+							<div class="font-bold text-gray-900">${invoice.number || 'N/A'}</div>
+						</td>
+						<td class="px-6 py-4 whitespace-nowrap">
+							<div class="text-gray-700">${client.name || 'Client inconnu'}</div>
+						</td>
+						<td class="px-6 py-4 whitespace-nowrap">
+							<div class="text-gray-900">${formatDate(invoice.date)}</div>
+						</td>
+						<td class="px-6 py-4 whitespace-nowrap">
+							<div class="font-bold text-gray-900">${formatCurrency(invoice.totalTTC || 0)}</div>
+						</td>
+						<td class="px-6 py-4 whitespace-nowrap">
+							<span class="px-3 py-1 rounded-full text-xs font-semibold ${invoice.status === 'payée' ? 'bg-green-100 text-green-800' : invoice.status === 'envoyée' ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}">
+								${invoice.status || 'Brouillon'}
+							</span>
+						</td>
+						<td class="px-6 py-4 whitespace-nowrap">
+							<div class="flex space-x-2">
+								${ hasPermission('invoices','view') ? `<button onclick="viewInvoice('${invoice.id}')" class="px-3 py-1.5 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200"><i class="fas fa-eye"></i></button>` : '' }
+								${ hasPermission('invoices','edit') ? `<button onclick="editInvoice('${invoice.id}')" class="px-3 py-1.5 bg-green-100 text-green-600 rounded-lg hover:bg-green-200"><i class="fas fa-edit"></i></button>` : '' }
+								${ hasPermission('invoices','pdf') ? `<button onclick="downloadInvoicePDF('${invoice.id}')" class="px-3 py-1.5 bg-purple-100 text-purple-600 rounded-lg hover:bg-purple-200"><i class="fas fa-file-pdf"></i></button>` : '' }
+								${ hasPermission('invoices','delete') ? `<button onclick="deleteInvoice('${invoice.id}')" class="px-3 py-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"><i class="fas fa-trash"></i></button>` : '' }
+							</div>
+						</td>
+					</tr>
+				`;
+			}).join('');
+			
+			if (invoices.length === 0) {
+				tbody.innerHTML = `
+					<tr>
+						<td colspan="6" class="px-6 py-8 text-center text-gray-500">
+							<i class="fas fa-file-invoice text-3xl mb-3"></i>
+							<p>Aucune facture trouvée</p>
+							<button onclick="showCreateInvoiceModal()" class="mt-4 text-blue-600 hover:underline">
+								Créer votre première facture
+							</button>
+						</td>
+					</tr>
+				`;
+			}
+		}
+
+		function filterInvoices() {
+			const status = document.getElementById('filterStatus').value;
+			const clientId = document.getElementById('filterClient').value;
+			const dateFrom = document.getElementById('filterDateFrom').value;
+			const search = (document.getElementById('filterSearch')?.value || '').toLowerCase();
+
+			const invoices = JSON.parse(localStorage.getItem('facturationInvoices')) || [];
+			const clients = JSON.parse(localStorage.getItem('facturationClients')) || [];
+
+			let filtered = invoices.slice();
+
+			if (status) {
+				filtered = filtered.filter(i => (i.status || 'brouillon') === status);
+			}
+
+			if (clientId) {
+				filtered = filtered.filter(i => i.clientId === clientId);
+			}
+
+			if (dateFrom) {
+				const from = new Date(dateFrom);
+				filtered = filtered.filter(i => new Date(i.date) >= from);
+			}
+
+			if (search) {
+				filtered = filtered.filter(i => {
+					const client = clients.find(c => c.id === i.clientId) || {};
+					return (i.number || '').toLowerCase().includes(search) || (client.name || '').toLowerCase().includes(search);
+				});
+			}
+
+			renderInvoices(filtered);
+		}
+
+		let _filterTimer = null;
+		function debouncedFilter() {
+			clearTimeout(_filterTimer);
+			_filterTimer = setTimeout(() => filterInvoices(), 300);
+		}
+
+		function renderInvoices(invoices) {
+			const clients = JSON.parse(localStorage.getItem('facturationClients')) || [];
+			const tbody = document.getElementById('invoicesTable');
+			if (!invoices || invoices.length === 0) {
+				tbody.innerHTML = `
+					<tr>
+						<td colspan="6" class="px-6 py-8 text-center text-gray-500">
+							<i class="fas fa-file-invoice text-3xl mb-3"></i>
+							<p>Aucune facture trouvée</p>
+							${ hasPermission('invoices','create') ? `<button onclick="showCreateInvoiceModal()" class="mt-4 text-blue-600 hover:underline">Créer votre première facture</button>` : '' }
+						</td>
+					</tr>
+				`;
+				return;
+			}
+			tbody.innerHTML = invoices.map(invoice => {
+				const client = clients.find(c => c.id === invoice.clientId) || {};
+				return `
+					<tr class="hover:bg-gray-50">
+						<td class="px-6 py-4 whitespace-nowrap"><div class="font-bold text-gray-900">${invoice.number || 'N/A'}</div></td>
+						<td class="px-6 py-4 whitespace-nowrap"><div class="text-gray-700">${client.name || 'Client inconnu'}</div></td>
+						<td class="px-6 py-4 whitespace-nowrap"><div class="text-gray-900">${formatDate(invoice.date)}</div></td>
+						<td class="px-6 py-4 whitespace-nowrap"><div class="font-bold text-gray-900">${formatCurrency(invoice.totalTTC || 0)}</div></td>
+						<td class="px-6 py-4 whitespace-nowrap">
+							${ hasPermission('invoices','changeStatus') ? `
+								<select onchange="changeInvoiceStatus('${invoice.id}', this.value)" class="border rounded px-2 py-1 text-sm">
+									<option value="brouillon" ${ (invoice.status||'brouillon')==='brouillon' ? 'selected' : '' }>Brouillon</option>
+									<option value="envoyée" ${ (invoice.status||'brouillon')==='envoyée' ? 'selected' : '' }>Envoyée</option>
+									<option value="payée" ${ (invoice.status||'brouillon')==='payée' ? 'selected' : '' }>Payée</option>
+									<option value="annulée" ${ (invoice.status||'brouillon')==='annulée' ? 'selected' : '' }>Annulée</option>
+								</select>
+							` : `<span class="px-3 py-1 rounded-full text-xs font-semibold ${(invoice.status==='payée') ? 'bg-green-100 text-green-800' : (invoice.status==='envoyée') ? 'bg-blue-100 text-blue-800' : 'bg-yellow-100 text-yellow-800'}">${invoice.status || 'Brouillon'}</span>` }
+						</td>
+						<td class="px-6 py-4 whitespace-nowrap">
+							<div class="flex space-x-2">
+								${ hasPermission('invoices','view') ? `<button onclick="viewInvoice('${invoice.id}')" class="px-3 py-1.5 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200"><i class="fas fa-eye"></i></button>` : '' }
+								${ hasPermission('invoices','edit') ? `<button onclick="editInvoice('${invoice.id}')" class="px-3 py-1.5 bg-green-100 text-green-600 rounded-lg hover:bg-green-200"><i class="fas fa-edit"></i></button>` : '' }
+								${ hasPermission('invoices','pdf') ? `<button onclick="downloadInvoicePDF('${invoice.id}')" class="px-3 py-1.5 bg-purple-100 text-purple-600 rounded-lg hover:bg-purple-200"><i class="fas fa-file-pdf"></i></button>` : '' }
+								${ hasPermission('invoices','delete') ? `<button onclick="deleteInvoice('${invoice.id}')" class="px-3 py-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"><i class="fas fa-trash"></i></button>` : '' }
+							</div>
+						</td>
+					</tr>
+				`;
+			}).join('');
+		}
+
+		function resetFilters() {
+			document.getElementById('filterStatus').value = '';
+			document.getElementById('filterClient').value = '';
+			document.getElementById('filterDateFrom').value = '';
+			loadInvoices();
+		}
+
+		function showCreateInvoiceModal(invoiceId) {
+			// Préparer création/édition de facture
+			appState.editingId = invoiceId || null;
+			// Créer le formulaire de facture dynamique
+			const invoiceForm = document.getElementById('invoiceForm');
+			const clients = JSON.parse(localStorage.getItem('facturationClients')) || [];
+			const products = JSON.parse(localStorage.getItem('facturationProducts')) || [];
+			const companies = JSON.parse(localStorage.getItem('facturationCompanies')) || [];
+			
+			invoiceForm.innerHTML = `
+				<form id="newInvoiceForm" class="space-y-6">
+					<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+						<div>
+							<label class="block text-sm font-medium text-gray-700 mb-2">Client *</label>
+							<select id="invoiceClient" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2">
+								<option value="">Sélectionner un client</option>
+								${clients.map(client => `<option value="${client.id}">${client.name}</option>`).join('')}
+							</select>
+						</div>
+						
+						<div>
+							<label class="block text-sm font-medium text-gray-700 mb-2">Entreprise émettrice *</label>
+							<select id="invoiceCompany" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2">
+								<option value="">Sélectionner une entreprise</option>
+								${companies.map(company => `<option value="${company.id}">${company.nom}</option>`).join('')}
+							</select>
+						</div>
+						
+						<div>
+							<label class="block text-sm font-medium text-gray-700 mb-2">Numéro de facture</label>
+							<input type="text" id="invoiceNumber" class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" 
+								   value="FAC-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}">
+						</div>
+						
+						<div>
+							<label class="block text-sm font-medium text-gray-700 mb-2">Date *</label>
+							<input type="date" id="invoiceDate" required class="w-full border-2 border-gray-300 rounded-lg px-4 py-2" 
+								   value="${new Date().toISOString().split('T')[0]}">
+						</div>
+					</div>
+					
+					<!-- Section produits -->
+					<div>
+						<h4 class="text-lg font-semibold text-gray-800 mb-4">Produits et services</h4>
+						<div class="space-y-4" id="invoiceItems">
+							<!-- Les lignes de produits seront ajoutées ici dynamiquement -->
+						</div>
+						
+						<button type="button" onclick="addInvoiceItem()" class="mt-4 w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-600 hover:border-blue-500 hover:text-blue-600">
+							<i class="fas fa-plus mr-2"></i>Ajouter un produit
+						</button>
+					</div>
+					
+					<!-- Section calculs -->
+					<div class="bg-gray-50 p-6 rounded-xl mt-6">
+						<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+							<div>
+								<label class="block text-sm font-medium text-gray-700 mb-2">Total HT</label>
+								<div class="text-2xl font-bold text-gray-800" id="invoiceTotalHT">0 FCFA</div>
+							</div>
+							<div>
+								<label class="block text-sm font-medium text-gray-700 mb-2">TVA (19.25%)</label>
+								<div class="text-xl font-semibold text-gray-700" id="invoiceTVA">0 FCFA</div>
+							</div>
+							<div>
+								<label class="block text-sm font-medium text-gray-700 mb-2">Total TTC</label>
+								<div class="text-2xl font-bold text-green-600" id="invoiceTotalTTC">0 FCFA</div>
+							</div>
+							<div>
+								<label class="block text-sm font-medium text-gray-700 mb-2">Net à payer</label>
+								<div class="text-2xl font-bold text-blue-600" id="invoiceNetToPay">0 FCFA</div>
+							</div>
+						</div>
+					</div>
+					
+					<div class="flex justify-end space-x-4 pt-6 border-t">
+						<button type="button" onclick="closeModal('invoiceModal')" class="px-6 py-3 border border-gray-300 text-gray-700 rounded-xl hover:bg-gray-50 font-medium">
+							Annuler
+						</button>
+						<button type="submit" class="btn-primary px-6 py-3 rounded-xl font-semibold">
+							<i class="fas fa-save mr-2"></i>Enregistrer la facture
+						</button>
+					</div>
+				</form>
+			`;
+			
+			// Ajouter la première ligne de produit
+			addInvoiceItem();
+
+			// Attacher le submit handler au formulaire injecté
+			setTimeout(() => {
+				const newForm = document.getElementById('newInvoiceForm');
+				if (newForm) {
+					newForm.addEventListener('submit', handleInvoiceSubmit);
+				}
+			}, 50);
+
+			openModal('invoiceModal');
+		}
+
+		function addInvoiceItem() {
+			const products = JSON.parse(localStorage.getItem('facturationProducts')) || [];
+			const itemsContainer = document.getElementById('invoiceItems');
+			
+			const itemId = generateId();
+			const itemHTML = `
+				<div class="flex items-center space-x-4 p-4 bg-white border rounded-lg" id="item-${itemId}">
+					<div class="flex-1">
+						<select class="w-full border-2 border-gray-300 rounded-lg px-4 py-2 product-select" onchange="updateProductPrice(this, '${itemId}')">
+							<option value="">Sélectionner un produit</option>
+							${products.map(product => `
+								<option value="${product.id}" data-price="${product.prix}">${product.designation} - ${formatCurrency(product.prix)}</option>
+							`).join('')}
+						</select>
+					</div>
+					<div class="w-32">
+						<input type="number" min="1" value="1" class="w-full border-2 border-gray-300 rounded-lg px-4 py-2 quantity-input" 
+							   onchange="calculateInvoiceTotals()" oninput="calculateInvoiceTotals()">
+					</div>
+					<div class="w-32">
+						<input type="number" step="0.01" class="w-full border-2 border-gray-300 rounded-lg px-4 py-2 price-input" 
+							   onchange="calculateInvoiceTotals()" oninput="calculateInvoiceTotals()" placeholder="Prix">
+					</div>
+					<div class="w-32">
+						<div class="text-right font-semibold total-display">0 FCFA</div>
+					</div>
+					<button type="button" onclick="removeInvoiceItem('${itemId}')" class="text-red-600 hover:text-red-800">
+						<i class="fas fa-times"></i>
+					</button>
+				</div>
+			`;
+			
+			itemsContainer.insertAdjacentHTML('beforeend', itemHTML);
+			calculateInvoiceTotals();
+		}
+
+		function updateProductPrice(select, itemId) {
+			const selectedOption = select.options[select.selectedIndex];
+			const price = selectedOption.getAttribute('data-price') || 0;
+			
+			const itemElement = document.getElementById(`item-${itemId}`);
+			const priceInput = itemElement.querySelector('.price-input');
+			priceInput.value = price;
+			
+			calculateInvoiceTotals();
+		}
+
+		function removeInvoiceItem(itemId) {
+			const itemElement = document.getElementById(`item-${itemId}`);
+			if (itemElement) {
+				itemElement.remove();
+				calculateInvoiceTotals();
+			}
+		}
+
+		function calculateInvoiceTotals() {
+			let totalHT = 0;
+			
+			// Calculer le total de chaque ligne
+			document.querySelectorAll('[id^="item-"]').forEach(item => {
+				const quantity = parseFloat(item.querySelector('.quantity-input').value) || 0;
+				const price = parseFloat(item.querySelector('.price-input').value) || 0;
+				const lineTotal = quantity * price;
+				
+				// Mettre à jour l'affichage de la ligne
+				const totalDisplay = item.querySelector('.total-display');
+				if (totalDisplay) {
+					totalDisplay.textContent = formatCurrency(lineTotal);
+				}
+				
+				totalHT += lineTotal;
+			});
+			
+			// Calculer les taxes et totaux
+			const tvaRate = 19.25; // TVA par défaut
+			const tva = totalHT * (tvaRate / 100);
+			const totalTTC = totalHT + tva;
+			
+			// Mettre à jour l'affichage
+			document.getElementById('invoiceTotalHT').textContent = formatCurrency(totalHT);
+			document.getElementById('invoiceTVA').textContent = formatCurrency(tva);
+			document.getElementById('invoiceTotalTTC').textContent = formatCurrency(totalTTC);
+			document.getElementById('invoiceNetToPay').textContent = formatCurrency(totalTTC);
+		}
+
+		function handleInvoiceSubmit(e) {
+			e.preventDefault();
+			const isEditing = !!appState.editingId;
+			if (isEditing) {
+				if (!requirePermission('invoices','edit')) return;
+			} else {
+				if (!requirePermission('invoices','create')) return;
+			}
+
+			const clientId = document.getElementById('invoiceClient').value;
+			const companyId = document.getElementById('invoiceCompany').value;
+			const number = document.getElementById('invoiceNumber').value.trim();
+			const date = document.getElementById('invoiceDate').value;
+
+			if (!clientId) { showError('Veuillez sélectionner un client'); return; }
+			if (!date) { showError('Veuillez renseigner la date'); return; }
+
+			const items = [];
+			document.querySelectorAll('[id^="item-"]').forEach(item => {
+				const productId = item.querySelector('.product-select')?.value || '';
+				const quantity = parseFloat(item.querySelector('.quantity-input')?.value) || 0;
+				const price = parseFloat(item.querySelector('.price-input')?.value) || 0;
+				if (quantity > 0 && price >= 0) {
+					items.push({ productId, quantity, price, lineTotal: quantity * price });
+				}
+			});
+
+			if (items.length === 0) { showError('Ajoutez au moins une ligne produit valide'); return; }
+
+			const totalHT = items.reduce((s, it) => s + (it.lineTotal || 0), 0);
+			const tvaRate = 19.25;
+			const totalTVA = totalHT * (tvaRate / 100);
+			const totalTTC = totalHT + totalTVA;
+
+			const invoices = JSON.parse(localStorage.getItem('facturationInvoices')) || [];
+			const invoiceData = {
+				id: isEditing ? appState.editingId : generateId(),
+				number: number || `FAC-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 1000)).padStart(3,'0')}`,
+				date,
+				clientId,
+				companyId,
+				items,
+				totalHT,
+				totalTVA,
+				totalTTC,
+				status: isEditing ? (invoices.find(i=>i.id===appState.editingId)?.status || 'brouillon') : 'brouillon',
+				updatedAt: new Date().toISOString(),
+				createdAt: isEditing ? invoices.find(i=>i.id===appState.editingId)?.createdAt || new Date().toISOString() : new Date().toISOString()
+			};
+
+			if (isEditing) {
+				const idx = invoices.findIndex(i => i.id === appState.editingId);
+				if (idx !== -1) invoices[idx] = { ...invoices[idx], ...invoiceData };
+			} else {
+				invoices.push(invoiceData);
+			}
+
+			localStorage.setItem('facturationInvoices', JSON.stringify(invoices));
+			closeModal('invoiceModal');
+			loadInvoices();
+			updateStats();
+			showNotification(`Facture ${isEditing ? 'mise à jour' : 'créée'} avec succès`, 'success');
+			appState.editingId = null;
+		}
+
+		function viewInvoice(invoiceId) {
+			const invoices = JSON.parse(localStorage.getItem('facturationInvoices')) || [];
+			const invoice = invoices.find(inv => inv.id === invoiceId);
+			
+			if (invoice) {
+				previewInvoice(invoice);
+			}
+		}
+
+		function editInvoice(invoiceId) {
+			if (!requirePermission('invoices','edit')) return;
+			// Charger la facture et pré-remplir le formulaire
+			const invoices = JSON.parse(localStorage.getItem('facturationInvoices')) || [];
+			const invoice = invoices.find(i => i.id === invoiceId);
+			if (!invoice) { showError('Facture introuvable'); return; }
+			showCreateInvoiceModal(invoiceId);
+			// attendre que le formulaire soit injecté puis remplir
+			setTimeout(() => {
+				const form = document.getElementById('newInvoiceForm');
+				if (!form) return;
+				document.getElementById('invoiceClient').value = invoice.clientId || '';
+				document.getElementById('invoiceCompany').value = invoice.companyId || '';
+				document.getElementById('invoiceNumber').value = invoice.number || '';
+				document.getElementById('invoiceDate').value = invoice.date || '';
+				// remplissage des items
+				const itemsContainer = document.getElementById('invoiceItems');
+				itemsContainer.innerHTML = '';
+				(invoice.items || []).forEach(it => {
+					addInvoiceItem();
+					const last = itemsContainer.lastElementChild;
+					if (!last) return;
+					last.querySelector('.product-select').value = it.productId || '';
+					last.querySelector('.quantity-input').value = it.quantity || 1;
+					last.querySelector('.price-input').value = it.price || 0;
+				});
+				calculateInvoiceTotals();
+			}, 200);
+		}
+
+		function downloadInvoicePDF(invoiceId) {
+			if (!requirePermission('invoices','pdf')) return;
+			const invoices = JSON.parse(localStorage.getItem('facturationInvoices')) || [];
+			const invoice = invoices.find(i => i.id === invoiceId);
+			if (!invoice) { showError('Facture introuvable'); return; }
+			// Préparer un aperçu simple puis générer le PDF
+			previewInvoice(invoice);
+			// attendre que preview soit rendu
+			setTimeout(() => generatePDF(), 300);
+		}
+
+		function deleteInvoice(invoiceId) {
+			if (!requirePermission('invoices','delete')) return;
+			if (!confirm('Confirmer la suppression de cette facture ?')) return;
+			const invoices = JSON.parse(localStorage.getItem('facturationInvoices')) || [];
+			const updated = invoices.filter(i => i.id !== invoiceId);
+			localStorage.setItem('facturationInvoices', JSON.stringify(updated));
+			loadInvoices();
+			updateStats();
+			showNotification('Facture supprimée', 'success');
+		}
+
+		function changeInvoiceStatus(invoiceId, newStatus) {
+			if (!requirePermission('invoices','changeStatus')) return;
+			const invoices = JSON.parse(localStorage.getItem('facturationInvoices')) || [];
+			const idx = invoices.findIndex(i => i.id === invoiceId);
+			if (idx === -1) { showError('Facture introuvable'); return; }
+			invoices[idx].status = newStatus;
+			localStorage.setItem('facturationInvoices', JSON.stringify(invoices));
+			loadInvoices();
+			updateStats();
+			showNotification('Statut mis à jour', 'success');
+		}
+
+		function previewInvoice(invoice) {
+			const previewDiv = document.getElementById('invoicePreview');
+			previewDiv.innerHTML = `
+				<div class="max-w-4xl mx-auto">
+					<div class="text-center mb-8">
+						<h2 class="text-3xl font-bold text-gray-800">APERÇU DE FACTURE</h2>
+						<p class="text-gray-600">Cette fonctionnalité complète nécessite un backend</p>
+					</div>
+					<div class="bg-blue-50 p-6 rounded-xl">
+						<p class="text-blue-700">
+							<i class="fas fa-info-circle mr-2"></i>
+							La génération complète des factures PDF sera implémentée avec un backend.
+							Pour l'instant, utilisez la fonction "Données de démo" pour tester.
+						</p>
+					</div>
+				</div>
+			`;
+			
+			openModal('previewModal');
+		}
+
+		function printInvoice() {
+			window.print();
+		}
+
+		// ===========================================
+		// GESTION DES CLIENTS
+		// ===========================================
+
+		function loadClients() {
+			const clients = JSON.parse(localStorage.getItem('facturationClients')) || [];
+			const container = document.getElementById('clientsList');
+			
+			if (clients.length === 0) {
+				container.innerHTML = `
+					<div class="text-center py-12">
+						<i class="fas fa-users text-4xl text-gray-300 mb-4"></i>
+						<p class="text-gray-500">Aucun client trouvé</p>
+						${ hasPermission('clients','create') ? `<button onclick="showAddClientModal()" class="mt-4 text-blue-600 hover:underline">Add your first client</button>` : '' }
+					</div>
+				`;
+				return;
+			}
+			
+			container.innerHTML = `
+				<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+					${clients.map(client => `
+						<div class="bg-white border border-gray-200 rounded-xl p-5 hover:shadow-lg transition-all duration-300">
+							<div class="flex items-start justify-between mb-4">
+								<div>
+									<div class="flex items-center">
+										<div class="w-10 h-10 ${client.type === 'entreprise' ? 'bg-blue-100' : 'bg-green-100'} rounded-lg flex items-center justify-center mr-3">
+											<i class="fas ${client.type === 'entreprise' ? 'fa-building' : 'fa-user'} ${client.type === 'entreprise' ? 'text-blue-600' : 'text-green-600'}"></i>
+										</div>
+										<div>
+											<h4 class="font-bold text-lg text-gray-800">${client.name}</h4>
+											<span class="text-xs ${client.type === 'entreprise' ? 'text-blue-600' : 'text-green-600'} font-medium">
+												${client.type === 'entreprise' ? 'Entreprise' : 'Particulier'}
+											</span>
+										</div>
+									</div>
+								</div>
+							</div>
+							
+							<div class="space-y-3 mb-6">
+								${client.phone ? `
+									<div class="flex items-center text-gray-600">
+										<i class="fas fa-phone text-gray-400 mr-3 w-5"></i>
+										<span>${client.phone}</span>
+									</div>
+								` : ''}
+								${client.email ? `
+									<div class="flex items-center text-gray-600">
+										<i class="fas fa-envelope text-gray-400 mr-3 w-5"></i>
+										<span>${client.email}</span>
+									</div>
+								` : ''}
+								${client.address ? `
+									<div class="flex items-start text-gray-600">
+										<i class="fas fa-map-marker-alt text-gray-400 mr-3 w-5 mt-1"></i>
+										<span class="text-sm">${client.address}</span>
+									</div>
+								` : ''}
+							</div>
+							
+							<div class="flex space-x-2">
+								${ hasPermission('clients','edit') ? `<button onclick="editClient('${client.id}')" class="flex-1 py-2.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium transition-colors"><i class="fas fa-edit mr-2"></i>Modifier</button>` : '' }
+								${ hasPermission('clients','delete') ? `<button onclick="deleteClient('${client.id}')" class="flex-1 py-2.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 font-medium transition-colors"><i class="fas fa-trash mr-2"></i>Supprimer</button>` : '' }
+							</div>
+						</div>
+					`).join('')}
+				</div>
+			`;
+		}
+
+		function showAddClientModal() {
+			if (!requirePermission('clients','create')) return;
+			document.getElementById('clientModalTitle').textContent = 'Nouveau Client';
+			document.getElementById('clientForm').reset();
+			appState.editingId = null;
+			openModal('clientModal');
+		}
+
+		function editClient(clientId) {
+			const clients = JSON.parse(localStorage.getItem('facturationClients')) || [];
+			const client = clients.find(c => c.id === clientId);
+			
+			if (client) {
+				document.getElementById('clientModalTitle').textContent = 'Modifier Client';
+				document.getElementById('clientId').value = client.id;
+				document.getElementById('clientType').value = client.type || 'particulier';
+				document.getElementById('clientName').value = client.name || '';
+				document.getElementById('clientEmail').value = client.email || '';
+				document.getElementById('clientPhone').value = client.phone || '';
+				document.getElementById('clientAddress').value = client.address || '';
+				
+				appState.editingId = clientId;
+				openModal('clientModal');
+			}
+		}
+
+		function handleClientSubmit(e) {
+			e.preventDefault();
+			
+			const clients = JSON.parse(localStorage.getItem('facturationClients')) || [];
+			
+			const clientData = {
+				id: appState.editingId || generateId(),
+				type: document.getElementById('clientType').value,
+				name: document.getElementById('clientName').value,
+				email: document.getElementById('clientEmail').value,
+				phone: document.getElementById('clientPhone').value,
+				address: document.getElementById('clientAddress').value
+			};
+			
+			if (appState.editingId) {
+				// Mettre à jour
+				const index = clients.findIndex(c => c.id === appState.editingId);
+				if (index !== -1) {
+					clients[index] = { ...clients[index], ...clientData };
+				}
+			} else {
+				// Ajouter
+				clients.push(clientData);
+			}
+			
+			// Sauvegarder
+			localStorage.setItem('facturationClients', JSON.stringify(clients));
+			
+			// Recharger
+			loadClients();
+			updateStats();
+			
+			// Fermer la modale
+			closeModal('clientModal');
+			
+			// Notification
+			showNotification(`Client ${appState.editingId ? 'modifié' : 'ajouté'} avec succès`, 'success');
+		}
+
+		function deleteClient(clientId) {
+			if (!requirePermission('clients','delete')) return;
+
+			if (confirm('Êtes-vous sûr de vouloir supprimer ce client ?')) {
+				const clients = JSON.parse(localStorage.getItem('facturationClients')) || [];
+				const updatedClients = clients.filter(c => c.id !== clientId);
+				localStorage.setItem('facturationClients', JSON.stringify(updatedClients));
+				loadClients();
+				updateStats();
+				showNotification('Client supprimé avec succès', 'success');
+			}
+		}
+
+		// ===========================================
+		// GESTION DES PRODUITS
+		// ===========================================
+
+		function loadProduits() {
+			const products = JSON.parse(localStorage.getItem('facturationProducts')) || [];
+			const container = document.getElementById('produitsList');
+			
+			if (products.length === 0) {
+				container.innerHTML = `
+					<div class="text-center py-12">
+						<i class="fas fa-boxes text-4xl text-gray-300 mb-4"></i>
+						<p class="text-gray-500">Aucun produit trouvé</p>
+						${ hasPermission('products','create') ? `<button onclick="showAddProduitModal()" class="mt-4 text-blue-600 hover:underline">Add your first product</button>` : '' }
+					</div>
+				`;
+				return;
+			}
+			
+			container.innerHTML = `
+				<div class="overflow-x-auto">
+					<table class="min-w-full divide-y divide-gray-200">
+						<thead>
+							<tr class="bg-gray-50">
+								<th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Référence</th>
+								<th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Désignation</th>
+								<th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Prix unitaire</th>
+								<th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Unité</th>
+								<th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">TVA</th>
+								<th class="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Actions</th>
+							</tr>
+						</thead>
+						<tbody class="bg-white divide-y divide-gray-200">
+							${products.map(product => `
+								<tr class="hover:bg-gray-50">
+									<td class="px-6 py-4 font-medium text-gray-800">${product.reference}</td>
+									<td class="px-6 py-4">${product.designation}</td>
+									<td class="px-6 py-4 font-semibold">${formatCurrency(product.prix)}</td>
+									<td class="px-6 py-4">
+										<span class="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-sm">${product.unite}</span>
+									</td>
+									<td class="px-6 py-4">${product.tva}%</td>
+									<td class="px-6 py-4">
+										${ hasPermission('products','edit') ? `<button onclick="editProduit('${product.id}')" class="text-blue-600 hover:text-blue-800 mr-4"><i class="fas fa-edit"></i></button>` : '' }
+										${ hasPermission('products','delete') ? `<button onclick="deleteProduit('${product.id}')" class="text-red-600 hover:text-red-800"><i class="fas fa-trash"></i></button>` : '' }
+									</td>
+								</tr>
+							`).join('')}
+						</tbody>
+					</table>
+				</div>
+			`;
+		}
+
+		function showAddProduitModal() {
+			if (!requirePermission('products','create')) return;
+			document.getElementById('produitModalTitle').textContent = 'Nouveau Produit';
+			document.getElementById('produitForm').reset();
+			document.getElementById('produitTva').value = '19.25';
+			appState.editingId = null;
+			openModal('produitModal');
+		}
+
+		function editProduit(productId) {
+			const products = JSON.parse(localStorage.getItem('facturationProducts')) || [];
+			const product = products.find(p => p.id === productId);
+			
+			if (product) {
+				document.getElementById('produitModalTitle').textContent = 'Modifier Produit';
+				document.getElementById('produitId').value = product.id;
+				document.getElementById('produitReference').value = product.reference;
+				document.getElementById('produitDesignation').value = product.designation;
+				document.getElementById('produitPrix').value = product.prix;
+				document.getElementById('produitUnite').value = product.unite;
+				document.getElementById('produitTva').value = product.tva;
+				document.getElementById('produitDescription').value = product.description || '';
+				
+				appState.editingId = productId;
+				openModal('produitModal');
+			}
+		}
+
+		function handleProduitSubmit(e) {
+			e.preventDefault();
+			
+			const products = JSON.parse(localStorage.getItem('facturationProducts')) || [];
+			
+			const productData = {
+				id: appState.editingId || generateId(),
+				reference: document.getElementById('produitReference').value,
+				designation: document.getElementById('produitDesignation').value,
+				prix: parseFloat(document.getElementById('produitPrix').value),
+				unite: document.getElementById('produitUnite').value,
+				tva: parseFloat(document.getElementById('produitTva').value),
+				description: document.getElementById('produitDescription').value
+			};
+			
+			if (appState.editingId) {
+				// Mettre à jour
+				const index = products.findIndex(p => p.id === appState.editingId);
+				if (index !== -1) {
+					products[index] = { ...products[index], ...productData };
+				}
+			} else {
+				// Ajouter
+				products.push(productData);
+			}
+			
+			// Sauvegarder
+			localStorage.setItem('facturationProducts', JSON.stringify(products));
+			
+			// Recharger
+			loadProduits();
+			updateStats();
+			
+			// Fermer la modale
+			closeModal('produitModal');
+			
+			// Notification
+			showNotification(`Produit ${appState.editingId ? 'modifié' : 'ajouté'} avec succès`, 'success');
+		}
+
+		function deleteProduit(productId) {
+			if (!requirePermission('products','delete')) return;
+
+			if (confirm('Êtes-vous sûr de vouloir supprimer ce produit ?')) {
+				const products = JSON.parse(localStorage.getItem('facturationProducts')) || [];
+				const updatedProducts = products.filter(p => p.id !== productId);
+				localStorage.setItem('facturationProducts', JSON.stringify(updatedProducts));
+				loadProduits();
+				updateStats();
+				showNotification('Produit supprimé avec succès', 'success');
+			}
+		}
+
+		// ===========================================
+		// GESTION DES ENTREPRISES
+		// ===========================================
+
+		function loadEntreprises() {
+			const companies = JSON.parse(localStorage.getItem('facturationCompanies')) || [];
+			const container = document.getElementById('entreprisesList');
+			
+			if (companies.length === 0) {
+				container.innerHTML = `
+					<div class="text-center py-12">
+						<i class="fas fa-building text-4xl text-gray-300 mb-4"></i>
+						<p class="text-gray-500">Aucune entreprise trouvée</p>
+						<button onclick="showAddEntrepriseModal()" class="mt-4 text-blue-600 hover:underline">
+							Add your first company
+						</button>
+					</div>
+				`;
+				return;
+			}
+			
+			container.innerHTML = `
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+					${companies.map(company => `
+						<div class="bg-white border border-gray-200 rounded-xl p-6 hover:shadow-lg transition-all duration-300">
+							<div class="flex items-center justify-between mb-4">
+								<h4 class="font-bold text-xl text-gray-800">${company.nom}</h4>
+								<span class="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-sm font-medium">${company.type}</span>
+							</div>
+							
+							<div class="space-y-3 mb-6">
+								<div class="flex items-center">
+									<i class="fas fa-id-card text-gray-400 mr-3 w-5"></i>
+									<div>
+										<div class="text-sm text-gray-500">RCCM</div>
+										<div class="font-medium">${company.rccm}</div>
+									</div>
+								</div>
+								<div class="flex items-center">
+									<i class="fas fa-hashtag text-gray-400 mr-3 w-5"></i>
+									<div>
+										<div class="text-sm text-gray-500">NIU</div>
+										<div class="font-medium">${company.niu}</div>
+									</div>
+								</div>
+								<div class="flex items-center">
+									<i class="fas fa-phone text-gray-400 mr-3 w-5"></i>
+									<div>
+										<div class="text-sm text-gray-500">Téléphone</div>
+										<div class="font-medium">${company.phone}</div>
+									</div>
+								</div>
+								<div class="flex items-center">
+									<i class="fas fa-envelope text-gray-400 mr-3 w-5"></i>
+									<div>
+										<div class="text-sm text-gray-500">Email</div>
+										<div class="font-medium">${company.email}</div>
+									</div>
+								</div>
+							</div>
+							
+							<div class="flex space-x-2">
+								<button onclick="editEntreprise('${company.id}')" class="flex-1 py-2.5 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 font-medium transition-colors">
+									<i class="fas fa-edit mr-2"></i>Modifier
+								</button>
+							</div>
+						</div>
+					`).join('')}
+				</div>
+			`;
+		}
+
+		function showAddEntrepriseModal() {
+			document.getElementById('entrepriseModalTitle').textContent = 'Nouvelle Entreprise';
+			document.getElementById('entrepriseForm').reset();
+			appState.editingId = null;
+			openModal('entrepriseModal');
+		}
+
+		function editEntreprise(companyId) {
+			const companies = JSON.parse(localStorage.getItem('facturationCompanies')) || [];
+			const company = companies.find(c => c.id === companyId);
+			
+			if (company) {
+				document.getElementById('entrepriseModalTitle').textContent = 'Modifier Entreprise';
+				document.getElementById('entrepriseId').value = company.id;
+				document.getElementById('entrepriseNom').value = company.nom;
+				document.getElementById('entrepriseType').value = company.type;
+				document.getElementById('entrepriseRccm').value = company.rccm;
+				document.getElementById('entrepriseNiu').value = company.niu;
+				document.getElementById('entreprisePhone').value = company.phone;
+				document.getElementById('entrepriseEmail').value = company.email;
+				document.getElementById('entrepriseAddress').value = company.address || '';
+				
+				appState.editingId = companyId;
+				openModal('entrepriseModal');
+			}
+		}
+
+		function handleEntrepriseSubmit(e) {
+			e.preventDefault();
+			
+			const companies = JSON.parse(localStorage.getItem('facturationCompanies')) || [];
+			
+			const companyData = {
+				id: appState.editingId || generateId(),
+				nom: document.getElementById('entrepriseNom').value,
+				type: document.getElementById('entrepriseType').value,
+				rccm: document.getElementById('entrepriseRccm').value,
+				niu: document.getElementById('entrepriseNiu').value,
+				phone: document.getElementById('entreprisePhone').value,
+				email: document.getElementById('entrepriseEmail').value,
+				address: document.getElementById('entrepriseAddress').value
+			};
+			
+			if (appState.editingId) {
+				// Mettre à jour
+				const index = companies.findIndex(c => c.id === appState.editingId);
+				if (index !== -1) {
+					companies[index] = { ...companies[index], ...companyData };
+				}
+			} else {
+				// Ajouter
+				companies.push(companyData);
+			}
+			
+			// Sauvegarder
+			localStorage.setItem('facturationCompanies', JSON.stringify(companies));
+			
+			// Recharger
+			loadEntreprises();
+			
+			// Fermer la modale
+			closeModal('entrepriseModal');
+			
+			// Notification
+			showNotification(`Entreprise ${appState.editingId ? 'modifiée' : 'ajoutée'} avec succès`, 'success');
+		}
+
+		// ===========================================
+		// FONCTIONS UTILITAIRES ET NOTIFICATIONS
+		// ===========================================
+
+		function showError(message) {
+			alert(`Erreur: ${message}`);
+		}
+
+		function showNotification(message, type = 'info') {
+			// Créer une notification
+			const notification = document.createElement('div');
+			const bgColor = type === 'success' ? 'bg-green-100 border-green-200 text-green-800' : 
+						   type === 'error' ? 'bg-red-100 border-red-200 text-red-800' : 
+						   'bg-blue-100 border-blue-200 text-blue-800';
+			
+			notification.className = `fixed top-4 right-4 p-4 rounded-xl shadow-lg z-50 transform translate-x-full transition-transform duration-300 border ${bgColor}`;
+			notification.innerHTML = `
+				<div class="flex items-center">
+					<i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'} mr-3"></i>
+					<span>${message}</span>
+				</div>
+			`;
+			
+			document.body.appendChild(notification);
+			
+			// Afficher la notification
+			setTimeout(() => {
+				notification.style.transform = 'translateX(0)';
+			}, 10);
+			
+			// Cacher après 3 secondes
+			setTimeout(() => {
+				notification.style.transform = 'translateX(100%)';
+				setTimeout(() => {
+					document.body.removeChild(notification);
+				}, 300);
+			}, 3000);
+		}
+
+		function generateSampleData() {
+			// Ajouter des données de démonstration
+			const sampleClients = [
+				{
+					id: generateId(),
+					type: 'entreprise',
+					name: 'SOQUIMACOL SARL',
+					email: 'contact@soquimacol.com',
+					phone: '676368924',
+					address: 'Douala, Makepe'
+				},
+				{
+					id: generateId(),
+					type: 'entreprise',
+					name: 'KREOBAT SARL',
+					email: 'contact@kreobat.com',
+					phone: '699887766',
+					address: 'Douala, Bonaberi'
+				}
+			];
+			
+			const sampleProducts = [
+				{
+					id: generateId(),
+					reference: 'CIM-001',
+					designation: 'Ciment Magi Colle Plus',
+					prix: 1395,
+					unite: 'sac',
+					tva: 19.25,
+					description: 'Ciment de haute qualité'
+				},
+				{
+					id: generateId(),
+					reference: 'CIM-002',
+					designation: 'Ciment Robust 42.5',
+					prix: 4900,
+					unite: 'sac',
+					tva: 19.25,
+					description: 'Ciment robuste 42.5'
+				}
+			];
+			
+			const sampleCompanies = [
+				{
+					id: generateId(),
+					nom: 'MAJOR SARL',
+					type: 'SARL',
+					rccm: 'CM-DLA-02-2024',
+					niu: 'M0224165',
+					phone: '676368924',
+					email: 'contact@socolcam.com',
+					address: 'Yabassi'
+				}
+			];
+			
+			// Sauvegarder les données
+			localStorage.setItem('facturationClients', JSON.stringify(sampleClients));
+			localStorage.setItem('facturationProducts', JSON.stringify(sampleProducts));
+			localStorage.setItem('facturationCompanies', JSON.stringify(sampleCompanies));
+			
+			// Recharger les données
+			updateStats();
+			loadRecentInvoices();
+			
+			// Notification
+			showNotification('Données de démonstration générées avec succès', 'success');
+		}
+
+		function generateReport(type) {
+			showNotification(`Génération du rapport ${type} en cours...`, 'info');
+		}
+
+		function showUserProfile() {
+			alert(`Profil utilisateur:\n\nNom: ${appState.currentUser.name}\nEmail: ${appState.currentUser.email}\nRôle: ${getRoleText(appState.currentUser.role)}`);
+		}
+
+		function showForgotPassword() {
+			alert('Fonctionnalité "Mot de passe oublié" à implémenter avec un backend');
+		}
+
+		// ===========================================
+		// EXPOSITION DES FONCTIONS GLOBALES
+		// ===========================================
+
+		window.openModal = openModal;
+		window.closeModal = closeModal;
+		window.navigate = navigate;
+		window.logout = logout;
+		window.togglePassword = togglePassword;
+		window.switchToUserManagement = switchToUserManagement;
+		window.switchToApp = switchToApp;
+		window.showAddUserModal = showAddUserModal;
+		window.showCreateInvoiceModal = showCreateInvoiceModal;
+		window.showAddClientModal = showAddClientModal;
+		window.showAddProduitModal = showAddProduitModal;
+		window.showAddEntrepriseModal = showAddEntrepriseModal;
+		window.viewInvoice = viewInvoice;
+		window.editInvoice = editInvoice;
+		window.downloadInvoicePDF = downloadInvoicePDF;
+		window.previewInvoice = previewInvoice;
+		window.printInvoice = printInvoice;
+		window.generateSampleData = generateSampleData;
+		window.filterInvoices = filterInvoices;
+		window.resetFilters = resetFilters;
+		window.editClient = editClient;
+		window.deleteClient = deleteClient;
+		window.editProduit = editProduit;
+		window.deleteProduit = deleteProduit;
+		window.editEntreprise = editEntreprise;
+		window.editUser = editUser;
+		window.deleteUser = deleteUser;
+		window.generateReport = generateReport;
+		window.showUserProfile = showUserProfile;
+		window.showForgotPassword = showForgotPassword;
+		window.toggleUserMenu = toggleUserMenu;
+		window.toggleSidebar = toggleSidebar;
+		window.generatePDF = generatePDF;
+		window.addInvoiceItem = addInvoiceItem;
+		window.updateProductPrice = updateProductPrice;
+		window.removeInvoiceItem = removeInvoiceItem;
+		window.calculateInvoiceTotals = calculateInvoiceTotals;
+		window.goBack = goBack;
+	</script>
+</body>
+</html>
